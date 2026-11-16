@@ -1,5 +1,6 @@
 import { analyseImages, parseJSON } from "../../llm";
-import { fetchWebsiteEvidence, type WebsiteEvidence } from "../../web";
+import type { PageEvidence, WebsiteEvidence } from "../../web";
+import { crawlSite } from "../../crawl";
 import { VisualInsightsSchema, type VisualInsights } from "../schemas";
 import { evidenceId, type Evidence } from "../model";
 import type { StageDefinition } from "./types";
@@ -14,6 +15,10 @@ export interface IngestInput {
 
 export interface IngestOutput {
   website?: WebsiteEvidence;
+  /** Other same-site pages read by the crawl (home is `website`). */
+  pages?: PageEvidence[];
+  /** Home + other pages, as stored in `brand_evidence` (removed before the result reaches the browser). */
+  sitePages?: PageEvidence[];
   visual?: VisualInsights;
   igHandle?: string;
   /** Content photos found on the website, stored as brand photos after the run. */
@@ -51,9 +56,17 @@ export const ingestStage: StageDefinition<IngestInput> = {
         (async () => {
           report({ id: "site", label: "Reading your website", status: "info" });
           try {
-            const site = await fetchWebsiteEvidence(input.websiteUrl!);
+            const { home: site, pages } = await crawlSite(input.websiteUrl!, {
+              onPage: (read, max) => report({ id: "pages", label: `Read ${read} of up to ${max} pages`, status: "info" }),
+            });
             output.website = site;
-            output.photoUrls = site.images;
+            output.pages = pages;
+            output.sitePages = [
+              { url: site.url, title: site.title, description: site.description, headings: site.headings, text: site.copySample, images: site.images.slice(0, 8) },
+              ...pages,
+            ];
+            output.photoUrls = [...new Set([...site.images, ...pages.flatMap((p) => p.images)])].slice(0, 20);
+            if (pages.length) report({ id: "pages", label: `Read ${pages.length + 1} pages of your website`, status: "done" });
             if (site.images.length) report({ id: "photos", label: `Found ${site.images.length} photos to use in posts`, status: "done", image: site.images[0] });
             report({ id: "site", label: `Read ${new URL(site.url).hostname}`, detail: site.title || undefined, status: "done" });
             if (site.logoUrl) report({ id: "logo", label: "Found your logo", status: "done", image: site.logoUrl });
@@ -73,6 +86,15 @@ export const ingestStage: StageDefinition<IngestInput> = {
               copySample: site.copySample.slice(0, 1500),
               capturedAt: now,
             });
+            for (const p of pages) {
+              evidence.push({
+                id: evidenceId("website", p.url),
+                source: "website",
+                url: p.url,
+                summary: [p.title, p.description].filter(Boolean).join(" — "),
+                capturedAt: now,
+              });
+            }
           } catch (err) {
             report({
               id: "site",

@@ -64,7 +64,21 @@ export interface WebsiteEvidence {
   headings: string[];
   copySample: string;
   stylesheetsRead: number;
+  /** Absolute same-origin links found on the page (crawl candidates). */
+  links: string[];
 }
+
+/** A non-home page read during a crawl. */
+export interface PageEvidence {
+  url: string;
+  title: string;
+  description: string;
+  headings: string[];
+  text: string;
+  images: string[];
+}
+
+export { fetchCapped };
 
 const attr = (tag: string, name: string) => tag.match(new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, "i"))?.[1];
 
@@ -222,5 +236,40 @@ export async function fetchWebsiteEvidence(rawUrl: string): Promise<WebsiteEvide
     headings,
     copySample: stripTags(html).slice(0, 5000),
     stylesheetsRead,
+    links: pageLinks(html, abs),
+  };
+}
+
+function pageLinks(html: string, abs: (href?: string) => string | undefined): string[] {
+  const out = new Set<string>();
+  for (const tag of html.match(/<a\b[^>]*>/gi) ?? []) {
+    const u = abs(attr(tag, "href"));
+    if (u) out.add(u);
+  }
+  return [...out];
+}
+
+/** Lighter read for inner pages: copy, headings and photos, no stylesheets. */
+export async function fetchPageEvidence(rawUrl: string, timeoutMs = 8_000): Promise<PageEvidence | null> {
+  const page = await fetchCapped(rawUrl, MAX_HTML_BYTES, timeoutMs);
+  if (!page) return null;
+  const { text: html, finalUrl } = page;
+  const abs = (href?: string) => {
+    try {
+      return href ? new URL(href, finalUrl).toString() : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  return {
+    url: finalUrl,
+    title: stripTags(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? ""),
+    description: metaContent(html, "description") ?? metaContent(html, "og:description") ?? "",
+    headings: [...html.matchAll(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi)]
+      .map((m) => stripTags(m[1]))
+      .filter((h) => h.length > 2 && h.length < 160)
+      .slice(0, 12),
+    text: stripTags(html).slice(0, 5000),
+    images: contentImages(html, abs).slice(0, 8),
   };
 }

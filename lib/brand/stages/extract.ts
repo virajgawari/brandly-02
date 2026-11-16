@@ -17,6 +17,20 @@ const near = (a: string, b: string) => {
   return Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2) < 30;
 };
 
+/** Short excerpts of the other crawled pages, capped so the prompt stays within small-model limits. */
+function otherPages(pages: IngestOutput["pages"]): string {
+  if (!pages?.length) return "";
+  let budget = 5000;
+  const out: string[] = [];
+  for (const p of pages) {
+    const piece = `${new URL(p.url).pathname} | ${p.title} | ${p.headings.slice(0, 4).join(" / ")} | ${p.text.slice(0, 350)}`;
+    if (piece.length > budget) break;
+    budget -= piece.length;
+    out.push(piece);
+  }
+  return out.length ? `\nOther pages on the site (path | title | headlines | excerpt):\n${out.join("\n")}` : "";
+}
+
 function buildPrompt(name: string, ev: IngestOutput, detectedColors: string[]): string {
   const site = ev.website;
   return `Brand name: ${name}
@@ -25,7 +39,7 @@ Title: ${site.title}
 Meta description: ${site.description}
 Headlines: ${site.headings.join(" | ")}
 Detected fonts (from CSS): ${site.fonts.join(", ") || "none"}
-Page copy (excerpt): ${site.copySample.slice(0, 3500)}` : "Website: not provided"}
+Page copy (excerpt): ${site.copySample.slice(0, 3500)}${otherPages(ev.pages)}` : "Website: not provided"}
 ${ev.visual ? `Visual analysis of catalogue/social images: ${JSON.stringify(ev.visual)}` : ""}
 ${ev.igHandle ? `Instagram handle: @${ev.igHandle} (posts not read)` : ""}
 Detected brand colours, most used first: ${detectedColors.join(", ") || "none"}

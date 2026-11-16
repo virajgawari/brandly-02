@@ -5,8 +5,10 @@ import { extractStage } from "./stages/extract";
 import { contentSystemStage } from "./stages/content-system";
 import { validateStage } from "./stages/validate";
 import { directionsStage } from "./stages/directions";
+import { layoutKitStage } from "./stages/layout-kit";
 import type { Finding, StageDefinition } from "./stages/types";
 import type { Compliance } from "./model";
+import { withFeature } from "../llm-log";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STAGES: Record<string, StageDefinition<any>> = {
@@ -15,14 +17,15 @@ export const STAGES: Record<string, StageDefinition<any>> = {
   [contentSystemStage.id]: contentSystemStage,
   [validateStage.id]: validateStage,
   [directionsStage.id]: directionsStage,
+  [layoutKitStage.id]: layoutKitStage,
 };
 
 /** A path through the loop is just an ordered list of stages. */
 export const PIPELINES = {
-  analyse: ["ingest", "extract", "content-system", "validate"],
+  analyse: ["ingest", "extract", "content-system", "layout-kit", "validate"],
   // Build and Refine reuse the same engine; their interview/direction stages plug in here.
-  build: ["content-system", "validate"],
-  refine: ["ingest", "extract", "content-system", "validate"],
+  build: ["content-system", "layout-kit", "validate"],
+  refine: ["ingest", "extract", "content-system", "layout-kit", "validate"],
 } as const;
 export type PipelineId = keyof typeof PIPELINES;
 
@@ -59,7 +62,7 @@ export async function runStages(
   for (const id of stageIds) {
     const stage = STAGES[id];
     if (!stage) throw new Error(`Unknown stage "${id}"`);
-    const result = await stage.run(model, carry, { report });
+    const result = await withFeature(`stage:${id}`, () => stage.run(model, carry, { report }));
     for (const { patch, options } of result.patches) {
       const merged = mergePatch(model, patch, options);
       model = merged.model;

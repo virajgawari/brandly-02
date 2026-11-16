@@ -1,0 +1,8 @@
+{
+  "id": "wick-process",
+  "brand": "wick",
+  "platforms": ["instagram","facebook"],
+  "template": "behind_scenes",
+  "topic": "how a batch gets poured",
+  "seed": 12
+}

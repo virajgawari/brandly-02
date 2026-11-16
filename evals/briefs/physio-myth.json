@@ -1,0 +1,8 @@
+{
+  "id": "physio-myth",
+  "brand": "physio",
+  "platforms": ["instagram","facebook"],
+  "template": "educational",
+  "topic": "myth: rest is the best treatment for back pain",
+  "seed": 22
+}

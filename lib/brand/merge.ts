@@ -1,4 +1,5 @@
-import type { BrandModel, FieldMeta, FieldSource, ModelPatch } from "./model";
+import type { BrandModel, FieldMeta, FieldMethod, FieldSource, ModelPatch } from "./model";
+import type { Platform } from "@/lib/types";
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -53,7 +54,17 @@ export interface MergeOptions {
   confidence: number;
   /** Per-path confidence overrides (e.g. CSS colours 0.95, guessed colours 0.4). */
   confidenceByPath?: Record<string, number>;
-  evidenceByPath?: Record<string, string>;
+  /** Evidence ids each path rests on. */
+  evidenceByPath?: Record<string, string[]>;
+  /** Free-text reason per path, e.g. "AI guess". */
+  noteByPath?: Record<string, string>;
+  /** How the values were produced; defaults to "user" for user edits and "llm" otherwise. */
+  method?: FieldMethod;
+  methodByPath?: Record<string, FieldMethod>;
+  /** Set when the values only apply to one platform. */
+  platform?: Platform;
+  /** Low/high bounds per path, in the field's own units. */
+  intervalByPath?: Record<string, [number, number]>;
   /** User edits lock the fields they touch. */
   lock?: boolean;
 }
@@ -88,12 +99,19 @@ export function mergePatch(model: BrandModel, patch: ModelPatch, opts: MergeOpti
       skippedLowerConfidence.push(path);
       continue;
     }
+    const previous = getPath(next, path);
     setPath(next as unknown as Record<string, unknown>, path, value);
     const meta: FieldMeta = {
       source: opts.source,
+      method: opts.methodByPath?.[path] ?? opts.method ?? (opts.source === "user" ? "user" : "llm"),
+      ...(opts.platform ? { platform: opts.platform } : {}),
       confidence: opts.source === "user" ? 1 : conf,
+      ...(opts.intervalByPath?.[path] ? { interval: opts.intervalByPath[path] } : {}),
       locked: opts.lock ?? current?.locked ?? false,
-      evidence: opts.evidenceByPath?.[path] ?? current?.evidence,
+      evidence: opts.evidenceByPath?.[path] ?? current?.evidence ?? [],
+      ...((opts.noteByPath?.[path] ?? current?.note) ? { note: opts.noteByPath?.[path] ?? current?.note } : {}),
+      // Keep the machine's last value; a user edit leaves it in place so the two can be compared.
+      ...(opts.source === "user" ? (current?.value !== undefined ? { value: current.value } : current && current.source !== "user" ? { value: previous } : {}) : { value }),
       updatedAt: now,
     };
     next.meta[path] = meta;
@@ -116,13 +134,13 @@ function isEmptyValue(v: unknown): boolean {
 
 export function setLock(model: BrandModel, path: string, locked: boolean): BrandModel {
   const next = structuredClone(model) as BrandModel;
-  const current = next.meta[path] ?? { source: "user" as const, confidence: 1, locked };
+  const current = next.meta[path] ?? { source: "user" as const, confidence: 1, locked, evidence: [] };
   next.meta[path] = { ...current, locked };
   return next;
 }
 
 /** Paths whose confidence is below the threshold, used to ask "Check this" questions. */
-export function lowConfidencePaths(model: BrandModel, threshold = 0.6): string[] {
+export function lowConfidencePaths(model: BrandModel, threshold = 0.5): string[] {
   return Object.entries(model.meta)
     .filter(([, m]) => !m.locked && m.source !== "user" && m.confidence < threshold)
     .map(([p]) => p);

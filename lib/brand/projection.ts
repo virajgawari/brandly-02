@@ -2,6 +2,7 @@ import type { BrandDNA } from "../types";
 import { emptyModel, type BrandModel } from "./model";
 import { describeAudience, MOMENT_LABELS, MOTIVATION_LABELS } from "./audience";
 import { mergePatch } from "./merge";
+import { toneToSigned } from "./scale";
 import { BUSINESS_MODELS, INDUSTRIES, PRIMARY_GOALS } from "./taxonomy";
 
 /** Projects the Brand Model onto the legacy flat BrandDNA so existing pages and routes keep working. */
@@ -76,7 +77,13 @@ const toneWord = (v: number, neg: string, pos: string) =>
  */
 export function toPromptContext(m: BrandModel): string {
   const a = m.strategy.audience;
-  const t = m.voice.tone;
+  const tone = m.voice.tone;
+  const t = {
+    funny_serious: toneToSigned(tone.funny_serious),
+    formal_casual: toneToSigned(tone.formal_casual),
+    respectful_irreverent: toneToSigned(tone.respectful_irreverent),
+    enthusiastic_matter: toneToSigned(tone.enthusiastic_matter),
+  };
   const c = m.expression.tokens.color;
   const lines = [
     `BRAND: ${m.name}`,

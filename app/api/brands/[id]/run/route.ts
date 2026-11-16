@@ -5,6 +5,9 @@ import { emptyModel, type BrandModel } from "@/lib/brand/model";
 import { errorResponse, requireSession } from "@/lib/db/session";
 import { withLlmContext } from "@/lib/llm-log";
 import { attachSourceMedia } from "@/lib/brand/photos";
+import { saveBrandVersion } from "@/lib/db/brands";
+import { saveWebsiteEvidence } from "@/lib/db/evidence";
+import type { PageEvidence } from "@/lib/web";
 
 // Long enough for a website read + AI synthesis; well inside Vercel's limits.
 export const maxDuration = 120;
@@ -63,6 +66,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             console.warn("[run] storing brand media failed", err);
           }
         }
+        // Store the crawled pages. This needs the brand row, so the first run saves the brand.
+        const sitePages = result.output.sitePages as PageEvidence[] | undefined;
+        if (session && pipeline !== "build" && sitePages?.length) {
+          try {
+            await saveBrandVersion(session, result.model, { source: "stage", stageId: `pipeline:${pipeline}` });
+            const n = await saveWebsiteEvidence(session, id, sitePages);
+            send({ type: "finding", finding: { id: "pages-saved", label: `Saved ${n} pages of your website`, status: "done" } });
+          } catch (err) {
+            console.warn("[run] storing website evidence failed", err);
+          }
+        }
+        delete result.output.sitePages;
+        delete result.output.pages;
         send({ type: "done", result });
       } catch (err) {
         console.error(`[run ${pipeline}]`, err);

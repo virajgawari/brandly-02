@@ -1,0 +1,8 @@
+{
+  "id": "physio-story",
+  "brand": "physio",
+  "platforms": ["instagram"],
+  "template": "testimonial",
+  "topic": "a runner back on the track after 8 weeks",
+  "seed": 23
+}

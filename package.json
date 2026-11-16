@@ -10,7 +10,8 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:test": "node scripts/test-rls.mjs",
     "test": "vitest run",
-    "eval": "tsx --conditions=react-server scripts/eval.ts"
+    "eval": "tsx --conditions=react-server scripts/eval.ts",
+    "corpus:build": "tsx --conditions=react-server scripts/build-corpus.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

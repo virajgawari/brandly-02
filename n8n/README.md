@@ -73,7 +73,8 @@ Response: `{ postId, status: "published" | "scheduled" | "partial" | "failed", r
 
 ## Not covered yet
 
-- Brand and post data still live in the browser (Zustand + localStorage), so n8n can't run
-  automation rules on its own schedule. That needs a database (e.g. Supabase) that both sides can read.
+- n8n does not read the database. Brands, posts and rules live in Supabase and Brandly sends each
+  request's data in the webhook body, so automation schedules run from Brandly's cron
+  (`/api/cron/schedule`, `/api/cron/drain`), not from n8n.
 - Image hosting: Pollinations links are permanent, but images from the Alibaba backup expire after
   24 hours. Copy those to permanent storage (e.g. Supabase Storage) if the backup gets used.

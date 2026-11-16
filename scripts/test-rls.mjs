@@ -144,6 +144,15 @@ try {
   blocked = false;
   try { await c.query("savepoint s9"); await c.query(`insert into jobs (workspace_id, kind, dedupe_key) values ($1,'test.echo','k1')`, [wsA]); } catch { blocked = true; await c.query("rollback to savepoint s9"); }
   ok(blocked, "dedupe_key allows only one active job per key");
+
+  // ── 0007 eval_runs: written only over the direct connection ────────────────
+  await c.query(`reset role`);
+  await c.query(`insert into eval_runs (run_id, prompt_version, brief_id, brand_key) values (gen_random_uuid(), 'generate-post@x', 't', 't')`);
+  await as(a);
+  ok((await c.query(`select id from eval_runs`)).rows.length === 0, "signed-in users cannot read eval_runs");
+  blocked = false;
+  try { await c.query("savepoint s10"); await c.query(`insert into eval_runs (run_id, prompt_version, brief_id, brand_key) values (gen_random_uuid(), 'x', 't', 't')`); } catch { blocked = true; await c.query("rollback to savepoint s10"); }
+  ok(blocked, "signed-in users cannot write eval_runs");
 } finally {
   await c.query("rollback");
   await c.end();

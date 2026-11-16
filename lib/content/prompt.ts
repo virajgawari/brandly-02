@@ -9,7 +9,7 @@ import { AI_CLICHES, briefBlock, type PostBrief } from "./brief";
 import { historyBlock, type ContentHistory } from "./history";
 import { imagePromptFromBrief } from "./visual";
 
-export const POST_PROMPT_VERSION = "generate-post@2";
+export const POST_PROMPT_VERSION = "generate-post@3";
 /** Higher than the default 0.7: posts should vary, brand facts come from the context. */
 export const POST_TEMPERATURE = 0.9;
 
@@ -97,6 +97,7 @@ platformVariants: only ${platforms.join(", ")}. facebook = more conversational, 
 export function postSchemaFor(model?: BrandModel) {
   const banned = bannedWords(model).map((w) => w.toLowerCase());
   return GeneratedPostSchema.superRefine((p, ctx) => {
+    if (p.hashtags.length < 5) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["hashtags"], message: `provide 5-10 hashtags, you gave ${p.hashtags.length}` });
     const text = `${p.caption} ${p.headline}`.toLowerCase();
     const hits = banned.filter((w) => w.length > 3 && new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
     if (hits.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["caption"], message: `remove the banned phrases: ${hits.join(", ")}` });

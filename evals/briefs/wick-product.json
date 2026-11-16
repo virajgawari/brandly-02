@@ -1,0 +1,8 @@
+{
+  "id": "wick-product",
+  "brand": "wick",
+  "platforms": ["instagram"],
+  "template": "product_launch",
+  "topic": "our new cedar and smoke candle",
+  "seed": 11
+}

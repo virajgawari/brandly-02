@@ -1,6 +1,7 @@
 import type { AutomationRule, Brand, ScheduledPost } from "@/lib/types";
 import type { BrandModel } from "@/lib/brand/model";
 import { toBrandDNA } from "@/lib/brand/projection";
+import { upgradeModel } from "@/lib/brand/upgrade";
 
 // Row shapes (snake_case) ↔ the app's existing types (camelCase).
 
@@ -16,7 +17,7 @@ export interface BrandRow {
 export function brandFromRow(r: BrandRow): Brand | null {
   const model = r.current?.model;
   if (!model) return null;
-  const m: BrandModel = { ...model, id: r.id, name: r.name };
+  const m: BrandModel = upgradeModel({ ...model, id: r.id, name: r.name });
   return { id: r.id, name: r.name, dna: toBrandDNA(m), model: m, sources: r.sources ?? {}, createdAt: r.created_at, updatedAt: r.updated_at };
 }
 

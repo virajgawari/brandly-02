@@ -2,7 +2,7 @@ import { generateStructured } from "../../llm";
 import { dedupeColors, hexToRgb } from "../color";
 import { complianceFor } from "../audience";
 import { ExtractSchema } from "../schemas";
-import { AGE_GROUPS, MOMENTS, MOTIVATIONS, type ModelPatch } from "../model";
+import { AGE_GROUPS, MOMENTS, MOTIVATIONS, evidenceId, type ModelPatch } from "../model";
 import { BUSINESS_MODEL_KEYS, INDUSTRY_KEYS, PRIMARY_GOAL_KEYS } from "../taxonomy";
 import type { IngestOutput } from "./ingest";
 import type { StageDefinition, StagePatch } from "./types";
@@ -43,10 +43,10 @@ Return JSON with exactly these keys:
   "differentiators": ["up to 3"],
   "prism": {"physique": "", "personality": "", "culture": "", "relationship": "", "reflection": "", "selfImage": ""},
   "archetype": "one Jungian brand archetype name",
-  "personality": {"sincerity": 0-1, "excitement": 0-1, "competence": 0-1, "sophistication": 0-1, "ruggedness": 0-1},
+  "personality": {"sincerity": 0-100, "excitement": 0-100, "competence": 0-100, "sophistication": 0-100, "ruggedness": 0-100},
   "colors": {"primary": "#RRGGBB", "secondary": "#RRGGBB", "accent": "#RRGGBB", "neutral": "#RRGGBB"},
   "headingFont": "", "bodyFont": "", "typographyFeel": "", "visualStyle": "", "imageryStyle": "",
-  "tone": {"funny_serious": -1..1, "formal_casual": -1..1, "respectful_irreverent": -1..1, "enthusiastic_matter": -1..1},
+  "tone": {/* each 0-100: 0 = the first word of the name, 100 = the second */ "funny_serious": 0-100, "formal_casual": 0-100, "respectful_irreverent": 0-100, "enthusiastic_matter": 0-100},
   "voiceDescription": "2 sentences on how they write",
   "vocabularyUse": ["words/phrases they use"], "vocabularyAvoid": ["words to avoid"],
   "sampleLines": ["3 short lines in their voice"],
@@ -87,6 +87,10 @@ export const extractStage: StageDefinition<IngestOutput> = {
     });
 
     const patches: StagePatch[] = [];
+    // Evidence the colours came from (the website's styles or the studied images).
+    const colourEvidenceIds = [...model.evidence, ...(ev.website ? [{ id: evidenceId("website", ev.website.url), colors: ev.website.colors }] : [])]
+      .filter((e) => e.colors?.length)
+      .map((e) => e.id);
     const fromEvidence = (hex?: string) => !!hex && detectedColors.some((d) => near(d, hex));
 
     // Colours: high confidence only when they match what we actually saw.
@@ -104,7 +108,9 @@ export const extractStage: StageDefinition<IngestOutput> = {
         source: "extracted",
         confidence: 0.4,
         confidenceByPath: colorConf,
-        evidenceByPath: Object.fromEntries(Object.keys(colorConf).map((p) => [p, detectedColors.length ? "website / image colours" : "AI guess"])),
+        method: detectedColors.length ? "css" : "llm",
+        evidenceByPath: Object.fromEntries(Object.keys(colorConf).map((p) => [p, detectedColors.length ? colourEvidenceIds : []])),
+        noteByPath: Object.fromEntries(Object.keys(colorConf).map((p) => [p, detectedColors.length ? "website / image colours" : "AI guess"])),
       },
     });
 
@@ -193,7 +199,10 @@ export const extractStage: StageDefinition<IngestOutput> = {
       },
       options: { source: "inferred", confidence: ev.website ? 0.7 : 0.55 },
     });
-    patches.push({ patch: { personality: r.personality }, options: { source: "inferred", confidence: 0.6 } });
+    patches.push({
+      patch: { personality: r.personality },
+      options: { source: "inferred", confidence: 0.6, method: "llm", evidenceByPath: Object.fromEntries(Object.keys(r.personality).map((k) => [`personality.${k}`, model.evidence.map((e) => e.id)])) },
+    });
 
     report({
       id: "synth",

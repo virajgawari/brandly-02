@@ -49,24 +49,23 @@ export const CITY_TIER_LABELS = { metro: "Metro cities", tier2: "Tier-2 cities",
 export const LANGUAGE_OPTIONS = ["English", "Hindi", "Hinglish", "Marathi", "Tamil", "Telugu", "Bengali", "Gujarati", "Kannada", "Malayalam", "Punjabi"];
 
 // ── Deterministic hints ────────────────────────────────────────────────────
-const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-const clampTone = (v: number) => Math.max(-1, Math.min(1, v));
+const clampPct = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
 
 /** Spending level nudges personality (and therefore palette): value → sincere/exciting, luxury → sophisticated. */
 export function adjustPersonalityForAudience(p: Personality, a: Partial<Audience>): Personality {
   const shift: Record<Affluence, Partial<Personality>> = {
-    value: { sincerity: 0.12, excitement: 0.1, sophistication: -0.2 },
-    mid: { competence: 0.06 },
-    premium: { sophistication: 0.15, competence: 0.05, excitement: -0.05 },
-    luxury: { sophistication: 0.3, excitement: -0.12, ruggedness: -0.1 },
+    value: { sincerity: 12, excitement: 10, sophistication: -20 },
+    mid: { competence: 6 },
+    premium: { sophistication: 15, competence: 5, excitement: -5 },
+    luxury: { sophistication: 30, excitement: -12, ruggedness: -10 },
   };
   const s = a.affluence ? shift[a.affluence] : {};
   return {
-    sincerity: clamp01(p.sincerity + (s.sincerity ?? 0)),
-    excitement: clamp01(p.excitement + (s.excitement ?? 0)),
-    competence: clamp01(p.competence + (s.competence ?? 0)),
-    sophistication: clamp01(p.sophistication + (s.sophistication ?? 0)),
-    ruggedness: clamp01(p.ruggedness + (s.ruggedness ?? 0)),
+    sincerity: clampPct(p.sincerity + (s.sincerity ?? 0)),
+    excitement: clampPct(p.excitement + (s.excitement ?? 0)),
+    competence: clampPct(p.competence + (s.competence ?? 0)),
+    sophistication: clampPct(p.sophistication + (s.sophistication ?? 0)),
+    ruggedness: clampPct(p.ruggedness + (s.ruggedness ?? 0)),
   };
 }
 
@@ -81,10 +80,11 @@ export function adjustToneForAudience(t: Tone, a: Partial<Audience>): Tone {
   const lean = ages.length ? (young - older) / ages.length : 0; // -1 older … 1 younger
   const lux = a.affluence === "luxury" || a.affluence === "premium" ? 1 : 0;
   return {
-    funny_serious: clampTone(t.funny_serious - 0.2 * lean + 0.15 * lux),
-    formal_casual: clampTone(t.formal_casual + 0.3 * lean - 0.2 * lux),
-    respectful_irreverent: clampTone(t.respectful_irreverent + 0.2 * lean - 0.2 * lux),
-    enthusiastic_matter: clampTone(t.enthusiastic_matter - 0.1 * lean + 0.1 * lux),
+    // 0–100 scale: the old -1..1 shifts times 50.
+    funny_serious: clampPct(t.funny_serious - 10 * lean + 7.5 * lux),
+    formal_casual: clampPct(t.formal_casual + 15 * lean - 10 * lux),
+    respectful_irreverent: clampPct(t.respectful_irreverent + 10 * lean - 10 * lux),
+    enthusiastic_matter: clampPct(t.enthusiastic_matter - 5 * lean + 5 * lux),
   };
 }
 

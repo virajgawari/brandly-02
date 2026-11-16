@@ -9,7 +9,11 @@
 //   voice       → NN/g four dimensions of tone
 //   content     → pillars + Ehrenberg-Bass category entry points / distinctive assets
 
+import type { Platform } from "@/lib/types";
 import type { BusinessModel, Industry, PrimaryGoal } from "./taxonomy";
+
+/** Current model shape. 1 (or unset) = old scales: personality 0–1, tone -1..1. 2 = both 0–100. */
+export const MODEL_SCHEMA_VERSION = 2;
 
 export type BrandMode = "analyse" | "build" | "refine";
 
@@ -92,7 +96,7 @@ export interface Identity {
   oneLiner: string;
 }
 
-/** Aaker dimensions, each 0–1. */
+/** Aaker dimensions, each 0–100. */
 export interface Personality {
   sincerity: number;
   excitement: number;
@@ -184,16 +188,18 @@ export interface Expression {
   photos?: BrandPhoto[];
 }
 
-/** NN/g tone dimensions, each -1..1. */
+/** NN/g tone dimensions, each 0–100. 0 is the left word of the axis name, 100 the right. */
 export interface Tone {
-  funny_serious: number; // -1 funny … 1 serious
-  formal_casual: number; // -1 formal … 1 casual
-  respectful_irreverent: number; // -1 respectful … 1 irreverent
-  enthusiastic_matter: number; // -1 enthusiastic … 1 matter-of-fact
+  funny_serious: number; // 0 funny … 100 serious
+  formal_casual: number; // 0 formal … 100 casual
+  respectful_irreverent: number; // 0 respectful … 100 irreverent
+  enthusiastic_matter: number; // 0 enthusiastic … 100 matter-of-fact
 }
 
 export interface Voice {
   tone: Tone;
+  /** Per-platform overrides of `tone`. Read through `effectiveTone` in scale.ts. */
+  toneByPlatform?: Partial<Record<Platform, Partial<Tone>>>;
   description: string;
   vocabulary: { use: string[]; avoid: string[] };
   sampleLines: string[];
@@ -211,15 +217,29 @@ export interface Content {
 
 export type FieldSource = "extracted" | "inferred" | "user" | "generated";
 
+/** How a field's value was produced. */
+export type FieldMethod = "css" | "vision" | "llm" | "measured" | "rated" | "answers" | "user" | "default";
+
 export interface FieldMeta {
   source: FieldSource;
+  method?: FieldMethod;
+  platform?: Platform;
   confidence: number; // 0–1
+  /** Low/high bounds in the field's own units (0–100 for personality and tone). */
+  interval?: [number, number];
   locked: boolean;
-  evidence?: string;
+  /** Ids of `BrandModel.evidence` items this value rests on. */
+  evidence: string[];
+  /** Free-text reason, e.g. "website / image colours". */
+  note?: string;
+  /** The value as a machine last wrote it, to compare with later user corrections. */
+  value?: unknown;
   updatedAt?: string;
 }
 
 export interface Evidence {
+  /** Stable id: `${source}:${url ?? ""}`. See `evidenceId`. */
+  id: string;
   source: "website" | "instagram" | "pdf" | "upload";
   url?: string;
   summary: string;
@@ -235,8 +255,12 @@ export interface Compliance {
   restrictedTopics: string[];
 }
 
+export const evidenceId = (source: Evidence["source"], url?: string) => `${source}:${url ?? ""}`;
+
 export interface BrandModel {
   id: string;
+  /** Missing on models saved before 0–100 scales; `upgradeModel` fills it in. */
+  schemaVersion?: number;
   name: string;
   mode: BrandMode;
   version: number;
@@ -272,6 +296,7 @@ export function emptyModel(name: string, mode: BrandMode, id: string = crypto.ra
   const now = new Date().toISOString();
   return {
     id,
+    schemaVersion: MODEL_SCHEMA_VERSION,
     name,
     mode,
     version: 1,
@@ -299,7 +324,7 @@ export function emptyModel(name: string, mode: BrandMode, id: string = crypto.ra
       mission: "",
       oneLiner: "",
     },
-    personality: { sincerity: 0.5, excitement: 0.5, competence: 0.5, sophistication: 0.5, ruggedness: 0.2 },
+    personality: { sincerity: 50, excitement: 50, competence: 50, sophistication: 50, ruggedness: 20 },
     expression: {
       tokens: {
         color: {
@@ -316,7 +341,7 @@ export function emptyModel(name: string, mode: BrandMode, id: string = crypto.ra
       distinctiveAssets: [],
     },
     voice: {
-      tone: { funny_serious: 0, formal_casual: 0, respectful_irreverent: -0.4, enthusiastic_matter: 0 },
+      tone: { funny_serious: 50, formal_casual: 50, respectful_irreverent: 30, enthusiastic_matter: 50 },
       description: "",
       vocabulary: { use: [], avoid: [] },
       sampleLines: [],

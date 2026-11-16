@@ -1,7 +1,7 @@
 import { analyseImages, parseJSON } from "../../llm";
 import { fetchWebsiteEvidence, type WebsiteEvidence } from "../../web";
 import { VisualInsightsSchema, type VisualInsights } from "../schemas";
-import type { Evidence } from "../model";
+import { evidenceId, type Evidence } from "../model";
 import type { StageDefinition } from "./types";
 
 export interface IngestInput {
@@ -63,6 +63,7 @@ export const ingestStage: StageDefinition<IngestInput> = {
             if (site.fonts.length) report({ id: "fonts", label: `Fonts: ${site.fonts.slice(0, 2).join(", ")}`, status: "done", fonts: site.fonts });
             report({ id: "copy", label: `Read ${site.headings.length} headlines and the page copy`, status: "done" });
             evidence.push({
+              id: evidenceId("website", site.url),
               source: "website",
               url: site.url,
               summary: [site.title, site.description].filter(Boolean).join(" — "),
@@ -100,8 +101,10 @@ export const ingestStage: StageDefinition<IngestInput> = {
               status: "done",
               swatches: visual.colors.slice(0, 6),
             });
+            const visualSource = input.imageSource === "instagram" ? "instagram" : input.imageSource === "pdf" ? "pdf" : "upload";
             evidence.push({
-              source: input.imageSource === "instagram" ? "instagram" : input.imageSource === "pdf" ? "pdf" : "upload",
+              id: evidenceId(visualSource),
+              source: visualSource,
               summary: [visual.visualStyle, visual.motifs].filter(Boolean).join(" "),
               colors: visual.colors,
               capturedAt: now,

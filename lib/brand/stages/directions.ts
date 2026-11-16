@@ -7,11 +7,11 @@ import { PERSONALITY_WORDS } from "../personality";
 import type { Personality, PersonalityKey, Tone } from "../model";
 import type { StageDefinition } from "./types";
 import { FONT_PAIRS } from "../fonts";
+import { tonePct } from "../schemas";
 
 export { FONT_PAIRS };
 
 
-const signed = z.coerce.number().min(-1).max(1).catch(0);
 const DirectionsSchema = z.object({
   directions: z
     .array(
@@ -20,9 +20,7 @@ const DirectionsSchema = z.object({
         summary: z.string().catch(""),
         oneLiner: z.string().catch(""),
         fontPairId: z.string().catch("fraunces-inter"),
-        tone: z
-          .object({ funny_serious: signed, formal_casual: signed, respectful_irreverent: signed, enthusiastic_matter: signed })
-          .catch({ funny_serious: 0, formal_casual: 0, respectful_irreverent: 0, enthusiastic_matter: 0 }),
+        tone: tonePct,
         voiceDescription: z.string().catch(""),
         sampleLines: z.array(z.string()).catch([]),
         sampleCaption: z.string().catch(""),
@@ -101,7 +99,7 @@ Return JSON:
   "summary": "one sentence a business owner understands",
   "oneLiner": "brand one-liner under 12 words",
   "fontPairId": "id from the list",
-  "tone": {"funny_serious": -1..1, "formal_casual": -1..1, "respectful_irreverent": -1..1, "enthusiastic_matter": -1..1},
+  "tone": {/* each 0-100: 0 = the first word of the name, 100 = the second */ "funny_serious": 0-100, "formal_casual": 0-100, "respectful_irreverent": 0-100, "enthusiastic_matter": 0-100},
   "voiceDescription": "2 sentences",
   "sampleLines": ["3 short lines in this voice"],
   "sampleCaption": "one Instagram caption, 1-3 sentences, max 2 hashtags",

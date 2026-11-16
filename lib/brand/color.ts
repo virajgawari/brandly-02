@@ -1,4 +1,5 @@
 import type { Personality, PersonalityKey } from "./model";
+import { personalityToUnit } from "./scale";
 
 // ── Conversions ────────────────────────────────────────────────────────────
 export interface HSL { h: number; s: number; l: number } // h 0–360, s/l 0–1
@@ -165,7 +166,8 @@ export interface Palette {
   neutral: string;
 }
 
-export function personalityToPalette(p: Personality, seed = 1): Palette {
+export function personalityToPalette(personality: Personality, seed = 1): Palette {
+  const p = personalityToUnit(personality); // the colour maths below works on 0–1
   const rand = seeded(seed);
   const [first, second] = rankPersonality(p);
   const pick = (k: PersonalityKey) => {

@@ -65,15 +65,15 @@ function ToneSlider({ left, right, value, onChange }: { left: string; right: str
   return (
     <label className="block">
       <span className="flex justify-between text-xs text-text-muted mb-2">
-        <span className={clsx(value < -0.2 && "text-text font-medium")}>{left}</span>
-        <span className={clsx(value > 0.2 && "text-text font-medium")}>{right}</span>
+        <span className={clsx(value < 40 && "text-text font-medium")}>{left}</span>
+        <span className={clsx(value > 60 && "text-text font-medium")}>{right}</span>
       </span>
       <input
         type="range"
         className="tone"
-        min={-1}
-        max={1}
-        step={0.1}
+        min={0}
+        max={100}
+        step={5}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         aria-label={`${left} to ${right}`}

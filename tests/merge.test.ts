@@ -19,6 +19,18 @@ describe("mergePatch", () => {
     expect(r.model.version).toBe(1);
   });
 
+  it("lets the owner clear a field and edit nested identity and list fields", () => {
+    let m = mergePatch(base(), { strategy: { offering: "candles", competitors: ["A", "B"] } }, { source: "inferred", confidence: 0.6 }).model;
+    const r = mergePatch(m, { strategy: { offering: "", competitors: [] }, identity: { prism: { culture: "calm" } } }, { source: "user", confidence: 1, lock: true });
+    expect(r.model.strategy.offering).toBe("");
+    expect(r.model.strategy.competitors).toEqual([]);
+    expect(r.model.identity.prism.culture).toBe("calm");
+    expect(r.model.identity.prism.physique).toBe(base().identity.prism.physique);
+    expect(r.model.meta["identity.prism.culture"]).toMatchObject({ source: "user", confidence: 1, locked: true });
+    m = r.model;
+    expect(m.meta["strategy.competitors"]).toMatchObject({ source: "user", locked: true });
+  });
+
   it("never overwrites a locked field unless the user does it", () => {
     let m = mergePatch(base(), { strategy: { offering: "candles" } }, { source: "user", confidence: 1 }).model;
     m = setLock(m, "strategy.offering", true);

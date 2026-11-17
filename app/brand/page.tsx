@@ -20,97 +20,8 @@ import { AFFLUENCE_OPTIONS, AGE_LABELS, complianceFor, GENDER_OPTIONS, LANGUAGE_
 import { checkPalette, contrastRatio, normalizeHex, readableOn, wcagLevel } from "@/lib/brand/color";
 import { FONT_CHOICES } from "@/lib/brand/fonts";
 import { loadGoogleFonts } from "@/lib/brand/client";
-
-const NEEDS_CHECK = 0.6;
-
-// ── Section card with source tag + lock ────────────────────────────────────
-function Section({
-  id,
-  title,
-  description,
-  model,
-  onLock,
-  children,
-}: {
-  id: string;
-  title: string;
-  description?: string;
-  model: BrandModel;
-  onLock: (path: string, locked: boolean) => void;
-  children: React.ReactNode;
-}) {
-  const c = sectionConfidence(model, id);
-  const needsCheck = c.source !== "user" && !c.locked && c.confidence > 0 && c.confidence < NEEDS_CHECK;
-  const empty = c.confidence === 0;
-  const locked = !!model.meta[id]?.locked;
-  return (
-    <Card className={clsx("p-5", needsCheck && "border-warn/40")}>
-      <div id={`section-${id}`} className="flex items-start justify-between gap-3 mb-4 scroll-mt-6">
-        <div>
-          <h2 className="font-medium">{title}</h2>
-          {description && <p className="text-xs text-text-muted mt-0.5">{description}</p>}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <SourceTag source={empty ? undefined : c.source} needsCheck={needsCheck || (empty && id === "strategy.audience")} />
-          <LockButton locked={locked} onToggle={() => onLock(id, !locked)} />
-        </div>
-      </div>
-      {children}
-    </Card>
-  );
-}
-
-// ── Voice slider ───────────────────────────────────────────────────────────
-function ToneSlider({ left, right, value, onChange }: { left: string; right: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <label className="block">
-      <span className="flex justify-between text-xs text-text-muted mb-2">
-        <span className={clsx(value < 40 && "text-text font-medium")}>{left}</span>
-        <span className={clsx(value > 60 && "text-text font-medium")}>{right}</span>
-      </span>
-      <input
-        type="range"
-        className="tone"
-        min={0}
-        max={100}
-        step={5}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        aria-label={`${left} to ${right}`}
-      />
-    </label>
-  );
-}
-
-// ── Editable list (pillars, hashtags, rules) ───────────────────────────────
-function ListEditor({ items, onChange, placeholder }: { items: string[]; onChange: (v: string[]) => void; placeholder: string }) {
-  const [draft, setDraft] = useState("");
-  const add = () => {
-    if (!draft.trim()) return;
-    onChange([...items, draft.trim()]);
-    setDraft("");
-  };
-  return (
-    <div>
-      <div className="flex flex-wrap gap-2">
-        {items.map((it, i) => (
-          <span key={i} className="inline-flex items-center gap-1.5 min-h-8 py-1 pl-3 pr-1.5 rounded-2xl border border-border bg-bg text-sm leading-snug max-w-full">
-            {it}
-            <button onClick={() => onChange(items.filter((_, j) => j !== i))} aria-label={`Remove ${it}`} className="w-5 h-5 grid place-items-center rounded-full text-text-muted hover:text-text hover:bg-text/5">
-              <X size={12} />
-            </button>
-          </span>
-        ))}
-      </div>
-      <div className="flex gap-2 mt-3">
-        <Input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder={placeholder} className="h-9" />
-        <Button variant="secondary" size="sm" className="h-9" onClick={add} aria-label="Add">
-          <Plus size={14} />
-        </Button>
-      </div>
-    </div>
-  );
-}
+import { ListEditor, NEEDS_CHECK, ScaleSlider as ToneSlider, Section } from "@/components/brand/editors";
+import { AudienceMoreSection, ContentMoreSection, IdentitySection, LookSection, PersonalitySection, PositioningSection, WordsSection } from "@/components/brand/KnowledgeSections";
 
 function BrandProfile() {
   const params = useSearchParams();
@@ -196,8 +107,15 @@ function BrandProfile() {
       <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
         <div className="min-w-0">
           <p className="text-xs text-text-muted">Brand profile</p>
-          <h1 className="text-2xl font-semibold tracking-tight mt-0.5">{model.name}</h1>
+          <input
+            key={model.name}
+            defaultValue={model.name}
+            aria-label="Brand name"
+            onBlur={(e) => e.target.value.trim() && e.target.value !== model.name && edit({ name: e.target.value.trim() })}
+            className="block w-full text-2xl font-semibold tracking-tight mt-0.5 bg-transparent rounded-lg -mx-2 px-2 border border-transparent hover:border-border focus:border-text/40 focus:outline-none"
+          />
           {model.identity.oneLiner && <p className="text-text-muted mt-1 text-sm max-w-xl">{model.identity.oneLiner}</p>}
+          <p className="text-xs text-text-muted mt-2">Everything on this page is editable. Changes save as you go, and edited fields stay locked so Brandly won&apos;t overwrite them.</p>
         </div>
         <Link href="/composer">
           <Button size="lg">
@@ -422,6 +340,26 @@ function BrandProfile() {
               </div>
             </div>
           </Section>
+
+          <details className="group rounded-2xl border border-border bg-card">
+            <summary className="cursor-pointer list-none p-5 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-medium">More about your brand</h2>
+                <p className="text-xs text-text-muted mt-0.5">Positioning, character, personality, look, words, audience and products</p>
+              </div>
+              <span className="text-xs text-text-muted group-open:hidden">Show</span>
+              <span className="text-xs text-text-muted hidden group-open:inline">Hide</span>
+            </summary>
+            <div className="space-y-6 p-5 pt-0">
+              <PositioningSection model={model} edit={edit} onLock={lock} />
+              <IdentitySection model={model} edit={edit} onLock={lock} />
+              <PersonalitySection model={model} edit={edit} onLock={lock} />
+              <LookSection model={model} edit={edit} onLock={lock} />
+              <WordsSection model={model} edit={edit} save={save} onLock={lock} />
+              <AudienceMoreSection model={model} edit={edit} onLock={lock} />
+              <ContentMoreSection model={model} edit={edit} onLock={lock} />
+            </div>
+          </details>
 
           <Card className="p-5 flex items-center justify-between gap-4 flex-wrap">
             <div>

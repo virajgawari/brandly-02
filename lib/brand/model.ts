@@ -10,6 +10,8 @@
 //   content     → pillars + Ehrenberg-Bass category entry points / distinctive assets
 
 import type { Platform } from "@/lib/types";
+import type { TextMeasures } from "@/lib/measure/text";
+import type { RatingResult } from "@/lib/measure/rate";
 import type { BusinessModel, Industry, PrimaryGoal } from "./taxonomy";
 
 /** Current model shape. 1 (or unset) = old scales: personality 0–1, tone -1..1. 2 = both 0–100. */
@@ -250,6 +252,13 @@ export interface Evidence {
   capturedAt: string;
 }
 
+export interface Measures {
+  version: string;
+  at: string;
+  text: TextMeasures;
+  rating?: { facets: RatingResult; textsRated: number; calls: number; failedCalls: number };
+}
+
 export interface Compliance {
   minorsInAudience: boolean;
   restrictedTopics: string[];
@@ -276,6 +285,8 @@ export interface BrandModel {
   meta: Record<string, FieldMeta>;
   evidence: Evidence[];
   compliance: Compliance;
+  /** Numbers measured from the site copy, with the method version they came from. */
+  measures?: Measures;
 }
 
 export type LayerKey = "strategy" | "identity" | "personality" | "expression" | "voice" | "content";

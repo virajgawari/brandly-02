@@ -60,7 +60,7 @@ export const MODELS: Record<LlmTask, { order: Provider[] } & Record<Provider, st
     order: ["gemini", "groq", "claude"],
     groq: list(process.env.MODEL_JUDGE_GROQ, ["openai/gpt-oss-120b"]),
     claude: list(process.env.MODEL_JUDGE_CLAUDE, []),
-    gemini: list(process.env.MODEL_JUDGE_GEMINI, ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"]),
+    gemini: list(process.env.MODEL_JUDGE_GEMINI, ["gemini-3.8-flash", "gemini-3.1-flash-lite"]),
   },
 };
 

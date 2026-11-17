@@ -149,6 +149,8 @@ export interface RateOptions {
   batchSize?: number;
   /** Pause between calls, to stay inside free-tier rate limits (default 4000 ms). */
   delayMs?: number;
+  /** Epoch ms after which no new batch is started; what is scored so far is returned. */
+  deadlineMs?: number;
   /** Replaces the LLM call (tests). Receives a batch, returns the parsed reply. */
   judge?: (batch: string[]) => Promise<z.infer<typeof replySchema>>;
 }
@@ -183,6 +185,7 @@ export async function rateTexts(input: string[], opts: RateOptions = {}): Promis
     const scores: Partial<Record<Facet, number>>[] = texts.map(() => ({}));
     for (let b = 0; b < order.length; b += batchSize) {
       const idx = order.slice(b, b + batchSize);
+      if (opts.deadlineMs && Date.now() + (calls > 0 ? delayMs : 0) >= opts.deadlineMs) break;
       if (calls > 0 && delayMs) await sleep(delayMs);
       calls++;
       try {

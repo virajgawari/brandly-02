@@ -11,6 +11,7 @@
     "db:test": "node scripts/test-rls.mjs",
     "test": "vitest run",
     "eval": "tsx --conditions=react-server scripts/eval.ts",
+    "eval:judge": "tsx --conditions=react-server scripts/eval-judge.ts",
     "corpus:build": "tsx --conditions=react-server scripts/build-corpus.ts"
   },
   "dependencies": {

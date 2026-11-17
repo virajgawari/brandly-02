@@ -30,6 +30,12 @@ describe("measureStage", () => {
     expect(r.patches).toEqual([]);
     expect(r.output?.textMeasures).toMatchObject({ texts: 1 });
   });
+  it("measures each long page and skips short ones", async () => {
+    const r = await measureStage.run(model(), { sitePages: [page(20, "https://x.test/a"), page(2, "https://x.test/b"), page(20, "https://x.test/c")] }, ctx());
+    const pm = r.output?.pageMeasures as { url: string; version: string }[];
+    expect(pm.map((x) => x.url)).toEqual(["https://x.test/a", "https://x.test/c"]);
+    expect(pm[0].version).toBeTruthy();
+  });
   it("skips quietly when there is too little text", async () => {
     const c = ctx();
     const r = await measureStage.run(model(), { sitePages: [page(1)] }, c);

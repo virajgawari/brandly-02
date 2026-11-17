@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PIPELINES, runStages, type PipelineId } from "@/lib/brand/pipelines";
 import { friendlyError } from "@/lib/errors";
-import { emptyModel, type BrandModel } from "@/lib/brand/model";
+import { emptyModel, type BrandModel, type BrandPhoto } from "@/lib/brand/model";
 import { errorResponse, requireSession } from "@/lib/db/session";
 import { withLlmContext } from "@/lib/llm-log";
 import { attachSourceMedia } from "@/lib/brand/photos";
@@ -60,6 +60,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             result.model = await attachSourceMedia(session, result.model, {
               photoUrls: result.output.photoUrls as string[] | undefined,
               screenshots: shots,
+              insights: result.output.photoInsights as { url: string; colors: string[]; tags?: BrandPhoto["tags"] }[] | undefined,
             });
             const saved = (result.model.expression.photos?.length ?? 0) - before;
             if (saved > 0) send({ type: "finding", finding: { id: "photos", label: `Saved ${saved} brand photos for your posts`, status: "done" } });
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           }
         }
         delete result.output.sitePages;
+        delete result.output.photoInsights;
         delete result.output.pageMeasures;
         delete result.output.pages;
         send({ type: "done", result });

@@ -13,6 +13,7 @@ import type { Platform } from "@/lib/types";
 import type { TextMeasures } from "@/lib/measure/text";
 import type { RatingResult } from "@/lib/measure/rate";
 import type { Contradiction } from "./contradictions";
+import type { ImageTags } from "./schemas";
 import type { BusinessModel, Industry, PrimaryGoal } from "./taxonomy";
 
 /** Current model shape. 1 (or unset) = old scales: personality 0–1, tone -1..1. 2 = both 0–100. */
@@ -164,6 +165,10 @@ export interface BrandPhoto {
   sourceUrl?: string;
   source: "website" | "instagram" | "upload";
   addedAt: string;
+  /** Dominant colours measured from the pixels (website photos). */
+  colors?: string[];
+  /** What a vision model saw in the photo. */
+  tags?: ImageTags;
 }
 
 export interface Expression {
@@ -260,6 +265,8 @@ export interface Measures {
   rating?: { facets: RatingResult; textsRated: number; calls: number; failedCalls: number };
   /** Where the numbers disagree with the profile; rebuilt on every run. */
   contradictions?: Contradiction[];
+  /** Colours measured from pixels: logo decides brand colours, photos only inform photography. */
+  pixels?: { version: string; logoPalette: string[]; photoPalette: string[] };
 }
 
 export interface Compliance {

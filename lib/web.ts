@@ -80,7 +80,7 @@ export interface PageEvidence {
 
 export { fetchCapped };
 
-const attr = (tag: string, name: string) => tag.match(new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, "i"))?.[1];
+const attr = (tag: string, name: string) => tag.match(new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, "i"))?.[1]?.replace(/&amp;/g, "&");
 
 function metaContent(html: string, key: string): string | undefined {
   for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {

@@ -3,6 +3,7 @@ import { mergePatch } from "./merge";
 import { ingestStage } from "./stages/ingest";
 import { measureStage } from "./stages/measure";
 import { rateStage } from "./stages/rate";
+import { contradictionsStage } from "./stages/contradictions";
 import { extractStage } from "./stages/extract";
 import { contentSystemStage } from "./stages/content-system";
 import { validateStage } from "./stages/validate";
@@ -18,6 +19,7 @@ export const STAGES: Record<string, StageDefinition<any>> = {
   [measureStage.id]: measureStage,
   [extractStage.id]: extractStage,
   [rateStage.id]: rateStage,
+  [contradictionsStage.id]: contradictionsStage,
   [contentSystemStage.id]: contentSystemStage,
   [validateStage.id]: validateStage,
   [directionsStage.id]: directionsStage,
@@ -26,10 +28,10 @@ export const STAGES: Record<string, StageDefinition<any>> = {
 
 /** A path through the loop is just an ordered list of stages. */
 export const PIPELINES = {
-  analyse: ["ingest", "measure", "extract", "rate", "content-system", "layout-kit", "validate"],
+  analyse: ["ingest", "measure", "extract", "rate", "contradictions", "content-system", "layout-kit", "validate"],
   // Build and Refine reuse the same engine; their interview/direction stages plug in here.
   build: ["content-system", "layout-kit", "validate"],
-  refine: ["ingest", "measure", "extract", "rate", "content-system", "layout-kit", "validate"],
+  refine: ["ingest", "measure", "extract", "rate", "contradictions", "content-system", "layout-kit", "validate"],
 } as const;
 export type PipelineId = keyof typeof PIPELINES;
 

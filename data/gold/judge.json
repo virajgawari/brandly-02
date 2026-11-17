@@ -1,0 +1,326 @@
+{
+ "labelledBy": "draft",
+ "note": "Synthetic texts. Labels are drafts written by Claude; the owner should review them. 0-100 scales as in lib/measure/rate.ts.",
+ "texts": [
+  {
+   "id": "g01",
+   "text": "Pursuant to the terms of this agreement, the Company shall provide the services described herein with reasonable skill and care, and shall notify the Client in writing of any material change to the scope of work within thirty days.",
+   "labels": {
+    "formal_casual": 5,
+    "funny_serious": 92,
+    "enthusiastic_matter": 90,
+    "respectful_irreverent": 8,
+    "competence": 75
+   }
+  },
+  {
+   "id": "g02",
+   "text": "Our advisors hold professional certifications and review every portfolio quarterly against audited benchmarks. We publish our fees, our methodology and our track record, so you can verify each claim before you invest.",
+   "labels": {
+    "competence": 92,
+    "sincerity": 70,
+    "funny_serious": 85,
+    "formal_casual": 25,
+    "sophistication": 55
+   }
+  },
+  {
+   "id": "g03",
+   "text": "Hey you! Big news: our new summer flavours just dropped and honestly we cannot stop eating them. Grab a scoop, grab a friend, and tell us which one wins. Spoiler: it's the mango!",
+   "labels": {
+    "formal_casual": 92,
+    "enthusiastic_matter": 8,
+    "funny_serious": 25,
+    "excitement": 80,
+    "sincerity": 75
+   }
+  },
+  {
+   "id": "g04",
+   "text": "Woohoo!! Sale starts NOW. Everything is half price, no tricks, no fine print, just good stuff for less. Run, don't walk. Seriously, we're not kidding, the good sizes go fast!",
+   "labels": {
+    "enthusiastic_matter": 4,
+    "formal_casual": 88,
+    "excitement": 85,
+    "funny_serious": 30
+   }
+  },
+  {
+   "id": "g05",
+   "text": "Forged from recycled steel and built for the long haul. This pack has carried gear over three mountain passes, through sleet, scree and river crossings, and it still looks like it means business.",
+   "labels": {
+    "ruggedness": 95,
+    "competence": 70,
+    "sophistication": 15,
+    "funny_serious": 70
+   }
+  },
+  {
+   "id": "g06",
+   "text": "Wake up at the trailhead, lace up cold boots, and climb until your lungs burn. Out here the weather decides, the rock is honest, and the only luxury is a dry sleeping bag.",
+   "labels": {
+    "ruggedness": 92,
+    "sincerity": 70,
+    "sophistication": 12,
+    "formal_casual": 65
+   }
+  },
+  {
+   "id": "g07",
+   "text": "Crafted in limited numbers by master artisans, each timepiece is finished by hand in polished platinum. An heirloom of rare refinement, presented in a case of hand-stitched Italian leather.",
+   "labels": {
+    "sophistication": 96,
+    "ruggedness": 8,
+    "formal_casual": 18,
+    "excitement": 30,
+    "enthusiastic_matter": 70
+   }
+  },
+  {
+   "id": "g08",
+   "text": "Indulge in an evening of understated elegance. Our suites overlook the lake, with silk linens, a private sommelier, and a quiet that money can scarcely buy elsewhere.",
+   "labels": {
+    "sophistication": 95,
+    "ruggedness": 5,
+    "formal_casual": 22,
+    "excitement": 20
+   }
+  },
+  {
+   "id": "g09",
+   "text": "We're a family bakery and we get up at 4am so your bread is warm. No shortcuts, no preservatives. If we wouldn't feed it to our own kids, we don't sell it. Come say hi.",
+   "labels": {
+    "sincerity": 95,
+    "sophistication": 15,
+    "formal_casual": 75,
+    "excitement": 25,
+    "funny_serious": 55
+   }
+  },
+  {
+   "id": "g10",
+   "text": "Honest answer? Our first batch was terrible. Too salty, too dry, and our neighbours were kind about it. Eleven tries later we got it right, and we'll show you every step.",
+   "labels": {
+    "sincerity": 93,
+    "formal_casual": 78,
+    "funny_serious": 40,
+    "competence": 40
+   }
+  },
+  {
+   "id": "g11",
+   "text": "Join a skydive this weekend and fall at 200 kilometres an hour. Be bold, break your routine, and do the thing you keep telling yourself you'll do someday. Today is someday.",
+   "labels": {
+    "excitement": 96,
+    "ruggedness": 60,
+    "enthusiastic_matter": 12,
+    "sincerity": 45,
+    "funny_serious": 35
+   }
+  },
+  {
+   "id": "g12",
+   "text": "Meet the first speaker that learns your room. New, daring and a little bit wild, it rewrites its own sound while you sleep. Nothing else on the shelf comes close.",
+   "labels": {
+    "excitement": 88,
+    "competence": 60,
+    "sophistication": 55,
+    "enthusiastic_matter": 20
+   }
+  },
+  {
+   "id": "g13",
+   "text": "The system processes invoices in under two seconds with 99.9 percent uptime. Documentation, audit logs and role-based access are included. Support responds within one business hour.",
+   "labels": {
+    "competence": 94,
+    "enthusiastic_matter": 92,
+    "funny_serious": 88,
+    "formal_casual": 40,
+    "excitement": 15
+   }
+  },
+  {
+   "id": "g14",
+   "text": "Product code 4417. Stainless steel, 500 ml, dishwasher safe. Ships within two business days. Returns accepted within thirty days with proof of purchase.",
+   "labels": {
+    "enthusiastic_matter": 96,
+    "formal_casual": 45,
+    "funny_serious": 90,
+    "excitement": 5,
+    "sincerity": 45
+   }
+  },
+  {
+   "id": "g15",
+   "text": "Our socks have a strict policy: they will not stay matched. We've tried bribery, threats and a stern talking-to. Buy two pairs and enjoy the chaos, because laundry day is a gamble.",
+   "labels": {
+    "funny_serious": 5,
+    "formal_casual": 90,
+    "respectful_irreverent": 65,
+    "enthusiastic_matter": 30
+   }
+  },
+  {
+   "id": "g16",
+   "text": "Tired of boring tax advice? Same. Our accountants wear cardigans, tell terrible jokes and still find you the deductions your cousin missed. Spreadsheets have never been this entertaining.",
+   "labels": {
+    "funny_serious": 8,
+    "formal_casual": 85,
+    "respectful_irreverent": 55,
+    "competence": 60,
+    "enthusiastic_matter": 25
+   }
+  },
+  {
+   "id": "g17",
+   "text": "Look, everyone else in this industry lies to you. We won't. Their 'miracle' creams are mostly water and marketing, and honestly, they know it. Ours is boring chemistry that works.",
+   "labels": {
+    "respectful_irreverent": 90,
+    "formal_casual": 82,
+    "sincerity": 70,
+    "funny_serious": 45
+   }
+  },
+  {
+   "id": "g18",
+   "text": "Rules are for people who can't do better. We built this app to ignore the usual advice, break the template, and roast bad design when we see it. Offended? Good, you're paying attention.",
+   "labels": {
+    "respectful_irreverent": 95,
+    "formal_casual": 88,
+    "excitement": 75,
+    "funny_serious": 30
+   }
+  },
+  {
+   "id": "g19",
+   "text": "We sincerely thank our customers for their continued trust. With the greatest respect for your time, we kindly invite you to review our updated terms at your earliest convenience.",
+   "labels": {
+    "respectful_irreverent": 4,
+    "formal_casual": 10,
+    "funny_serious": 80,
+    "enthusiastic_matter": 75
+   }
+  },
+  {
+   "id": "g20",
+   "text": "It would be our honour to welcome you. Please let us know how we can make your visit as comfortable as possible, and do not hesitate to ask our staff for anything at all.",
+   "labels": {
+    "respectful_irreverent": 3,
+    "formal_casual": 25,
+    "sincerity": 75,
+    "sophistication": 65,
+    "enthusiastic_matter": 55
+   }
+  },
+  {
+   "id": "g21",
+   "text": "We are thrilled, delighted and frankly over the moon to announce our biggest launch ever! Thank you, thank you, thank you for making this happen. You are the best community in the world!",
+   "labels": {
+    "enthusiastic_matter": 3,
+    "excitement": 85,
+    "formal_casual": 75,
+    "funny_serious": 25,
+    "sincerity": 70
+   }
+  },
+  {
+   "id": "g22",
+   "text": "The warranty covers manufacturing defects for twenty-four months. Claims require the original receipt. Damage caused by misuse, water or modification is excluded.",
+   "labels": {
+    "enthusiastic_matter": 95,
+    "funny_serious": 95,
+    "formal_casual": 15,
+    "excitement": 3,
+    "respectful_irreverent": 15
+   }
+  },
+  {
+   "id": "g23",
+   "text": "Expert plumbers, licensed and insured, on call around the clock. Fixed prices quoted before work begins, a two-year guarantee on every repair, and a clean workspace when we leave.",
+   "labels": {
+    "competence": 90,
+    "sincerity": 60,
+    "enthusiastic_matter": 75,
+    "formal_casual": 40,
+    "funny_serious": 75
+   }
+  },
+  {
+   "id": "g24",
+   "text": "Our guides have led over four thousand treks and rescued only three of them, which we think is a pretty good ratio. Bring boots, bring snacks and leave the cotton jeans at home.",
+   "labels": {
+    "ruggedness": 85,
+    "competence": 75,
+    "funny_serious": 35,
+    "formal_casual": 75,
+    "sincerity": 65
+   }
+  },
+  {
+   "id": "g25",
+   "text": "Slow mornings, soft light, and a ceramic cup warm in your hands. We make quiet things for quiet days, from linen towels to candles that smell like rain on stone.",
+   "labels": {
+    "sincerity": 75,
+    "sophistication": 60,
+    "excitement": 10,
+    "ruggedness": 5,
+    "formal_casual": 60
+   }
+  },
+  {
+   "id": "g26",
+   "text": "An uncompromising new chronograph for those who define their own standard. Sapphire crystal, sculpted titanium, a movement tested to ten thousand hours. Reserve yours before the season closes.",
+   "labels": {
+    "sophistication": 88,
+    "competence": 80,
+    "excitement": 50,
+    "ruggedness": 45,
+    "formal_casual": 25
+   }
+  },
+  {
+   "id": "g27",
+   "text": "lol ok so we accidentally ordered 4,000 rubber ducks. Help. They're 2 for $5 and each one has a tiny hat. Tell your friends, tell your mum, just please take the ducks.",
+   "labels": {
+    "formal_casual": 98,
+    "funny_serious": 3,
+    "respectful_irreverent": 50,
+    "sincerity": 70,
+    "sophistication": 5
+   }
+  },
+  {
+   "id": "g28",
+   "text": "Our research team publishes peer-reviewed findings each quarter. Methods, datasets and limitations are open for inspection, and we correct errors publicly when they are found.",
+   "labels": {
+    "competence": 93,
+    "sincerity": 75,
+    "funny_serious": 90,
+    "formal_casual": 20,
+    "enthusiastic_matter": 85
+   }
+  },
+  {
+   "id": "g29",
+   "text": "Gear up. Rain, dust or darkness, this jacket doesn't care. Tough seams, fierce zips, and a hood that has survived the worst storm we could find. Go get dirty.",
+   "labels": {
+    "ruggedness": 94,
+    "excitement": 70,
+    "sophistication": 10,
+    "enthusiastic_matter": 30,
+    "formal_casual": 70
+   }
+  },
+  {
+   "id": "g30",
+   "text": "Come as you are. Pull up a chair, grab a cup and stay as long as you like. We'll remember your name next time, and probably your order too.",
+   "labels": {
+    "sincerity": 92,
+    "formal_casual": 85,
+    "excitement": 20,
+    "sophistication": 20,
+    "respectful_irreverent": 30
+   }
+  }
+ ]
+}

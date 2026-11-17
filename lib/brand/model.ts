@@ -12,6 +12,7 @@
 import type { Platform } from "@/lib/types";
 import type { TextMeasures } from "@/lib/measure/text";
 import type { RatingResult } from "@/lib/measure/rate";
+import type { Contradiction } from "./contradictions";
 import type { BusinessModel, Industry, PrimaryGoal } from "./taxonomy";
 
 /** Current model shape. 1 (or unset) = old scales: personality 0–1, tone -1..1. 2 = both 0–100. */
@@ -257,6 +258,8 @@ export interface Measures {
   at: string;
   text: TextMeasures;
   rating?: { facets: RatingResult; textsRated: number; calls: number; failedCalls: number };
+  /** Where the numbers disagree with the profile; rebuilt on every run. */
+  contradictions?: Contradiction[];
 }
 
 export interface Compliance {

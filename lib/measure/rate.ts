@@ -168,9 +168,9 @@ export interface RateReport {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function rateTexts(input: string[], opts: RateOptions = {}): Promise<RateReport> {
-  const { samples = 20, runs = 2, batchSize = 10, delayMs = 4000 } = opts;
-  const texts = pickSamples(input, samples);
+/** Every text goes to the judge `runs` times, in a different order each time. Returns one score map per text per run. */
+export async function scoreTexts(texts: string[], opts: RateOptions = {}) {
+  const { runs = 2, batchSize = 10, delayMs = 4000 } = opts;
   const judge =
     opts.judge ??
     ((batch: string[]) => generateStructured(replySchema, SYSTEM, userPrompt(batch), { task: "judge", maxTokens: 4500, temperature: 0 }));
@@ -207,6 +207,12 @@ export async function rateTexts(input: string[], opts: RateOptions = {}): Promis
     }
     perRun.push(scores);
   }
+  return { perRun, calls, droppedUnquoted: dropped, failedCalls: failed };
+}
 
-  return { ratings: aggregate(perRun, texts.length), textsRated: texts.length, runs, calls, droppedUnquoted: dropped, failedCalls: failed };
+export async function rateTexts(input: string[], opts: RateOptions = {}): Promise<RateReport> {
+  const { samples = 20, runs = 2 } = opts;
+  const texts = pickSamples(input, samples);
+  const { perRun, calls, droppedUnquoted, failedCalls } = await scoreTexts(texts, opts);
+  return { ratings: aggregate(perRun, texts.length), textsRated: texts.length, runs, calls, droppedUnquoted, failedCalls };
 }

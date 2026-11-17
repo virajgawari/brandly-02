@@ -7,6 +7,7 @@ import { withLlmContext } from "@/lib/llm-log";
 import { attachSourceMedia } from "@/lib/brand/photos";
 import { saveBrandVersion } from "@/lib/db/brands";
 import { saveWebsiteEvidence } from "@/lib/db/evidence";
+import type { PageMeasures } from "@/lib/brand/stages/measure";
 import type { PageEvidence } from "@/lib/web";
 
 // Long enough for a website read + AI synthesis; well inside Vercel's limits.
@@ -71,13 +72,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (session && pipeline !== "build" && sitePages?.length) {
           try {
             await saveBrandVersion(session, result.model, { source: "stage", stageId: `pipeline:${pipeline}` });
-            const n = await saveWebsiteEvidence(session, id, sitePages);
+            const n = await saveWebsiteEvidence(session, id, sitePages, result.output.pageMeasures as PageMeasures[] | undefined);
             send({ type: "finding", finding: { id: "pages-saved", label: `Saved ${n} pages of your website`, status: "done" } });
           } catch (err) {
             console.warn("[run] storing website evidence failed", err);
           }
         }
         delete result.output.sitePages;
+        delete result.output.pageMeasures;
         delete result.output.pages;
         send({ type: "done", result });
       } catch (err) {

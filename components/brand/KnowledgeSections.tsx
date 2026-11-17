@@ -96,9 +96,37 @@ export function ratedInfo(model: BrandModel, path: string) {
   return { interval: m.interval, note: m.note, confidence: m.confidence };
 }
 
+/** Places where the site copy disagrees with the profile. "Use N" takes the rated value; "Keep mine" locks the field. */
+function Disagreements({ model, edit, onLock, prefix }: SectionProps & { prefix: string }) {
+  const items = (model.measures?.contradictions ?? []).filter((c) => c.path.startsWith(prefix) && !model.meta[c.path]?.locked);
+  if (!items.length) return null;
+  const use = (path: string, n: number) => {
+    const [layer, a, b] = path.split(".");
+    edit((b ? { [layer]: { [a]: { [b]: n } } } : { [layer]: { [a]: n } }) as ModelPatch);
+  };
+  return (
+    <ul className="mb-5 space-y-3 text-sm">
+      {items.map((c) => (
+        <li key={c.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-l-2 border-warn pl-3">
+          <span className="flex-1 min-w-[16rem]">{c.text}</span>
+          {c.suggested !== undefined && (
+            <button className="h-8 px-3 rounded-md border border-border hover:border-text/30" onClick={() => use(c.path, c.suggested!)}>
+              Use {c.suggested}
+            </button>
+          )}
+          <button className="h-8 px-3 rounded-md border border-border hover:border-text/30" onClick={() => onLock(c.path, true)}>
+            Keep mine
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function PersonalitySection({ model, edit, onLock }: SectionProps) {
   return (
     <Section id="personality" title="Personality" description="How the brand comes across, as a person" model={model} onLock={onLock}>
+      <Disagreements model={model} edit={edit} onLock={onLock} prefix="personality." />
       <div className="grid sm:grid-cols-2 gap-x-8 gap-y-5">
         {PERSONALITY.map((p) => (
           <ScaleSlider key={p.key} left={p.left} right={p.right} value={model.personality[p.key]} onChange={(v) => edit({ personality: { [p.key]: v } })} rated={ratedInfo(model, `personality.${p.key}`)} />
@@ -169,6 +197,7 @@ export function WordsSection({ model, edit, save, onLock }: SectionProps & { sav
           <ListEditor items={v.sampleLines} onChange={(x) => edit({ voice: { sampleLines: x } })} placeholder="Write a line the way you would say it" />
         </div>
         <div>
+          <Disagreements model={model} edit={edit} onLock={onLock} prefix="voice.tone." />
           <Label>Tone for one platform</Label>
           <div className="flex flex-wrap gap-2 mb-4">
             {PLATFORMS.map((p) => (

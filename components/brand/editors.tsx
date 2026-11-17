@@ -47,7 +47,20 @@ export function Section({
 }
 
 /** A 0–100 slider between two words. */
-export function ScaleSlider({ left, right, value, onChange }: { left: string; right: string; value: number; onChange: (v: number) => void }) {
+export function ScaleSlider({
+  left,
+  right,
+  value,
+  onChange,
+  rated,
+}: {
+  left: string;
+  right: string;
+  value: number;
+  onChange: (v: number) => void;
+  /** Set when the value was rated from site copy: shows the likely range and a short note. */
+  rated?: { interval?: [number, number]; note?: string; confidence: number };
+}) {
   return (
     <label className="block">
       <span className="flex justify-between text-xs text-text-muted mb-2">
@@ -64,6 +77,18 @@ export function ScaleSlider({ left, right, value, onChange }: { left: string; ri
         onChange={(e) => onChange(Number(e.target.value))}
         aria-label={`${left} to ${right}`}
       />
+      {rated && (
+        <>
+          {rated.interval && (
+            <span className="relative block h-1 mt-1 rounded-full bg-text/5" aria-hidden>
+              <span className="absolute inset-y-0 rounded-full bg-text/20" style={{ left: `${rated.interval[0]}%`, width: `${Math.max(2, rated.interval[1] - rated.interval[0])}%` }} />
+            </span>
+          )}
+          <span className="block text-xs text-text-muted mt-1">
+            {rated.note ?? "Rated from site texts"}, confidence {rated.confidence < 0.4 ? "low" : rated.confidence < 0.7 ? "medium" : "high"}
+          </span>
+        </>
+      )}
     </label>
   );
 }

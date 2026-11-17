@@ -96,7 +96,10 @@ export function mergePatch(model: BrandModel, patch: ModelPatch, opts: MergeOpti
     }
     const conf = opts.confidenceByPath?.[path] ?? opts.confidence;
     const current = next.meta[path];
-    if (opts.source !== "user" && current && current.confidence > conf) {
+    // A measured or rated value replaces a machine guess even at lower confidence; it carries its own interval.
+    const replacesGuess = (opts.method === "rated" || opts.method === "measured") && current?.source !== "user" && (current?.method === "llm" || current?.method === "default" || current?.method === undefined);
+    const guessOverMeasured = opts.source !== "user" && (current?.method === "rated" || current?.method === "measured") && (opts.method === undefined || opts.method === "llm" || opts.method === "default");
+    if (opts.source !== "user" && current && (guessOverMeasured || (current.confidence > conf && !replacesGuess))) {
       skippedLowerConfidence.push(path);
       continue;
     }

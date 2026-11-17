@@ -67,3 +67,29 @@ describe("mergePatch", () => {
     expect(m.strategy.offering).toBe("");
   });
 });
+
+describe("mergePatch with rated values", () => {
+  const rated = { source: "inferred" as const, method: "rated" as const, confidence: 0.2, intervalByPath: { "voice.tone.funny_serious": [60, 80] as [number, number] } };
+
+  it("replaces an unlocked LLM guess even at lower confidence, keeping the interval", () => {
+    const m = mergePatch(base(), { voice: { tone: { funny_serious: 30 } } }, { source: "inferred", confidence: 0.6, method: "llm" }).model;
+    const r = mergePatch(m, { voice: { tone: { funny_serious: 74 } } }, rated);
+    expect(r.model.voice.tone.funny_serious).toBe(74);
+    expect(r.model.meta["voice.tone.funny_serious"]).toMatchObject({ method: "rated", confidence: 0.2, interval: [60, 80] });
+  });
+
+  it("never replaces a user edit or a locked field", () => {
+    const user = mergePatch(base(), { voice: { tone: { funny_serious: 10 } } }, { source: "user", confidence: 1 }).model;
+    expect(mergePatch(user, { voice: { tone: { funny_serious: 74 } } }, rated).model.voice.tone.funny_serious).toBe(10);
+    const llm = mergePatch(base(), { voice: { tone: { funny_serious: 30 } } }, { source: "inferred", confidence: 0.6, method: "llm" }).model;
+    const locked = setLock(llm, "voice.tone.funny_serious", true);
+    expect(mergePatch(locked, { voice: { tone: { funny_serious: 74 } } }, rated).skippedLocked).toContain("voice.tone.funny_serious");
+  });
+
+  it("does not let a plain LLM value replace a rated one", () => {
+    const m = mergePatch(base(), { voice: { tone: { funny_serious: 74 } } }, rated).model;
+    const r = mergePatch(m, { voice: { tone: { funny_serious: 30 } } }, { source: "inferred", confidence: 0.6, method: "llm" });
+    expect(r.model.voice.tone.funny_serious).toBe(74);
+    expect(r.skippedLowerConfidence).toContain("voice.tone.funny_serious");
+  });
+});

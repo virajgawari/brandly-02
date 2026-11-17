@@ -89,12 +89,19 @@ const PERSONALITY: { key: keyof BrandModel["personality"]; left: string; right: 
   { key: "ruggedness", left: "Soft, indoor", right: "Tough, outdoorsy" },
 ];
 
+/** Interval and note for a field a judge rated from site copy; undefined otherwise. */
+export function ratedInfo(model: BrandModel, path: string) {
+  const m = model.meta[path];
+  if (m?.method !== "rated") return undefined;
+  return { interval: m.interval, note: m.note, confidence: m.confidence };
+}
+
 export function PersonalitySection({ model, edit, onLock }: SectionProps) {
   return (
     <Section id="personality" title="Personality" description="How the brand comes across, as a person" model={model} onLock={onLock}>
       <div className="grid sm:grid-cols-2 gap-x-8 gap-y-5">
         {PERSONALITY.map((p) => (
-          <ScaleSlider key={p.key} left={p.left} right={p.right} value={model.personality[p.key]} onChange={(v) => edit({ personality: { [p.key]: v } })} />
+          <ScaleSlider key={p.key} left={p.left} right={p.right} value={model.personality[p.key]} onChange={(v) => edit({ personality: { [p.key]: v } })} rated={ratedInfo(model, `personality.${p.key}`)} />
         ))}
       </div>
     </Section>
@@ -184,6 +191,7 @@ export function WordsSection({ model, edit, save, onLock }: SectionProps & { sav
                 right={TONE_WORDS[k][1]}
                 value={tone[k]}
                 onChange={(n) => edit({ voice: { toneByPlatform: { [platform]: { [k]: n } } } })}
+                rated={override?.[k] === undefined ? ratedInfo(model, `voice.tone.${k}`) : undefined}
               />
             ))}
           </div>

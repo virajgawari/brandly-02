@@ -5,6 +5,7 @@ import { ExtractSchema } from "../schemas";
 import { AGE_GROUPS, MOMENTS, MOTIVATIONS, evidenceId, type ModelPatch } from "../model";
 import { BUSINESS_MODEL_KEYS, INDUSTRY_KEYS, PRIMARY_GOAL_KEYS } from "../taxonomy";
 import type { IngestOutput } from "./ingest";
+import type { TextMeasures } from "../../measure/text";
 import type { StageDefinition, StagePatch } from "./types";
 
 const SYSTEM = `You are a senior brand strategist. You turn evidence about a real business into a precise brand profile.
@@ -31,7 +32,23 @@ function otherPages(pages: IngestOutput["pages"]): string {
   return out.length ? `\nOther pages on the site (path | title | headlines | excerpt):\n${out.join("\n")}` : "";
 }
 
-function buildPrompt(name: string, ev: IngestOutput, detectedColors: string[]): string {
+/** The deterministic numbers from the measure stage, so the model's tone guesses start from facts. */
+function measuredBlock(m: TextMeasures | undefined): string {
+  if (!m || m.n < 150) return "";
+  const lines = [
+    m.sentenceLength ? `average sentence ${Math.round(m.sentenceLength.mean)} words (longest tenth ${Math.round(m.sentenceLength.p90)})` : "",
+    m.readability ? `Flesch reading ease ${Math.round(m.readability.fleschReadingEase)}` : "",
+    m.pronouns?.youWeRatio != null ? `you:we ratio ${m.pronouns.youWeRatio.toFixed(1)}` : "",
+    `exclamations per 100 words ${m.exclamationPer100Words.toFixed(1)}`,
+    `emoji per 100 words ${m.emojiPer100Words.toFixed(1)}`,
+    `concreteness ${Math.round(m.concreteness)}/100`,
+    m.lexicon?.over.length ? `words used more than other brands in the industry: ${m.lexicon.over.slice(0, 8).map((w) => w.word).join(", ")}` : "",
+  ].filter(Boolean);
+  return `
+Measured from the site copy (facts, not guesses): ${lines.join("; ")}`;
+}
+
+function buildPrompt(name: string, ev: IngestOutput & { textMeasures?: TextMeasures }, detectedColors: string[]): string {
   const site = ev.website;
   return `Brand name: ${name}
 ${site ? `Website: ${site.url}
@@ -39,7 +56,7 @@ Title: ${site.title}
 Meta description: ${site.description}
 Headlines: ${site.headings.join(" | ")}
 Detected fonts (from CSS): ${site.fonts.join(", ") || "none"}
-Page copy (excerpt): ${site.copySample.slice(0, 3500)}${otherPages(ev.pages)}` : "Website: not provided"}
+Page copy (excerpt): ${site.copySample.slice(0, 3500)}${otherPages(ev.pages)}${measuredBlock(ev.textMeasures)}` : "Website: not provided"}
 ${ev.visual ? `Visual analysis of catalogue/social images: ${JSON.stringify(ev.visual)}` : ""}
 ${ev.igHandle ? `Instagram handle: @${ev.igHandle} (posts not read)` : ""}
 Detected brand colours, most used first: ${detectedColors.join(", ") || "none"}
@@ -83,7 +100,7 @@ Colour rules: if colours were detected, choose primary/secondary/accent ONLY fro
 Font rules: use detected fonts when available.`;
 }
 
-export const extractStage: StageDefinition<IngestOutput> = {
+export const extractStage: StageDefinition<IngestOutput & { textMeasures?: TextMeasures }> = {
   id: "extract",
   label: "Building your brand profile",
   reads: [],

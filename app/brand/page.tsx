@@ -203,6 +203,14 @@ function BrandProfile() {
                 </div>
               ))}
             </div>
+            {!!model.measures?.pixels?.photoPalette.length && (
+              <div className="mt-4 flex items-center gap-2 text-xs text-text-muted">
+                <span>Your photos</span>
+                {model.measures.pixels.photoPalette.map((hex) => (
+                  <span key={hex} title={hex} className="h-5 w-5 rounded-full border border-border" style={{ background: hex }} />
+                ))}
+              </div>
+            )}
             <div className="mt-4 flex flex-wrap gap-2 text-xs">
               <span className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full border border-border">
                 Text on primary: {paletteCheck.textOnPrimary.toFixed(1)}:1 · {wcagLevel(paletteCheck.textOnPrimary)}

@@ -83,13 +83,17 @@ export async function storeLogo(s: Session, brandId: string, url: string): Promi
 export async function attachSourceMedia(
   s: Session,
   model: BrandModel,
-  found: { photoUrls?: string[]; screenshots?: string[]; logoUrl?: string }
+  found: { photoUrls?: string[]; screenshots?: string[]; logoUrl?: string; insights?: { url: string; colors: string[]; tags?: BrandPhoto["tags"] }[] }
 ): Promise<BrandModel> {
   const have = model.expression.photos ?? [];
   const room = Math.max(0, Math.min(12, MAX_BRAND_PHOTOS - have.length));
   const known = new Set(have.map((p) => p.sourceUrl).filter(Boolean));
   const urls = (found.photoUrls ?? []).filter((u) => !known.has(u));
-  const fromSite = room ? await importBrandPhotos(s, model.id, urls, "website", room) : [];
+  const insightByUrl = new Map((found.insights ?? []).map((i) => [i.url, i]));
+  const fromSite = (room ? await importBrandPhotos(s, model.id, urls, "website", room) : []).map((p) => {
+    const i = p.sourceUrl ? insightByUrl.get(p.sourceUrl) : undefined;
+    return i ? { ...p, ...(i.colors.length ? { colors: i.colors } : {}), ...(i.tags ? { tags: i.tags } : {}) } : p;
+  });
   const shots: BrandPhoto[] = [];
   for (const b64 of (found.screenshots ?? []).slice(0, Math.max(0, room - fromSite.length))) {
     try {

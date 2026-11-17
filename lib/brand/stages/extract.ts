@@ -48,8 +48,12 @@ function measuredBlock(m: TextMeasures | undefined): string {
 Measured from the site copy (facts, not guesses): ${lines.join("; ")}`;
 }
 
-function buildPrompt(name: string, ev: IngestOutput & { textMeasures?: TextMeasures }, detectedColors: string[]): string {
+type ExtractInput = IngestOutput & { textMeasures?: TextMeasures; pixels?: { logoPalette: string[]; photoPalette: string[] } };
+
+function buildPrompt(name: string, ev: ExtractInput, detectedColors: string[]): string {
   const site = ev.website;
+  const logoColors = ev.pixels?.logoPalette ?? [];
+  const photoColors = ev.pixels?.photoPalette ?? [];
   return `Brand name: ${name}
 ${site ? `Website: ${site.url}
 Title: ${site.title}
@@ -60,6 +64,8 @@ Page copy (excerpt): ${site.copySample.slice(0, 3500)}${otherPages(ev.pages)}${m
 ${ev.visual ? `Visual analysis of catalogue/social images: ${JSON.stringify(ev.visual)}` : ""}
 ${ev.igHandle ? `Instagram handle: @${ev.igHandle} (posts not read)` : ""}
 Detected brand colours, most used first: ${detectedColors.join(", ") || "none"}
+${logoColors.length ? `Logo colours, measured from the logo's pixels (prefer these for primary): ${logoColors.join(", ")}` : ""}
+${photoColors.length ? `Photo palette (for photography and imagery only, never UI colours): ${photoColors.join(", ")}` : ""}
 
 Return JSON with exactly these keys:
 {
@@ -100,13 +106,14 @@ Colour rules: if colours were detected, choose primary/secondary/accent ONLY fro
 Font rules: use detected fonts when available.`;
 }
 
-export const extractStage: StageDefinition<IngestOutput & { textMeasures?: TextMeasures }> = {
+export const extractStage: StageDefinition<ExtractInput> = {
   id: "extract",
   label: "Building your brand profile",
   reads: [],
   writes: ["strategy", "identity", "personality", "expression", "voice", "content"],
   async run(model, ev, { report }) {
-    const detectedColors = dedupeColors([...(ev.website?.colors ?? []), ...(ev.visual?.colors ?? [])]).slice(0, 8);
+    const logoColors = ev.pixels?.logoPalette ?? [];
+    const detectedColors = dedupeColors([...logoColors, ...(ev.website?.colors ?? []), ...(ev.visual?.colors ?? [])]).slice(0, 8);
     if (!ev.website && !ev.visual && !ev.igHandle) {
       throw new Error("Nothing to analyse yet. Add a website, Instagram screenshots or a PDF.");
     }
@@ -123,6 +130,7 @@ export const extractStage: StageDefinition<IngestOutput & { textMeasures?: TextM
       .filter((e) => e.colors?.length)
       .map((e) => e.id);
     const fromEvidence = (hex?: string) => !!hex && detectedColors.some((d) => near(d, hex));
+    const fromLogo = (hex?: string) => !!hex && logoColors.some((d) => near(d, hex));
 
     // Colours: high confidence only when they match what we actually saw.
     const colorConf: Record<string, number> = {};
@@ -141,7 +149,14 @@ export const extractStage: StageDefinition<IngestOutput & { textMeasures?: TextM
         confidenceByPath: colorConf,
         method: detectedColors.length ? "css" : "llm",
         evidenceByPath: Object.fromEntries(Object.keys(colorConf).map((p) => [p, detectedColors.length ? colourEvidenceIds : []])),
-        noteByPath: Object.fromEntries(Object.keys(colorConf).map((p) => [p, detectedColors.length ? "website / image colours" : "AI guess"])),
+        noteByPath: Object.fromEntries(
+          (["primary", "secondary", "accent", "neutral"] as const)
+            .filter((role) => r.colors[role])
+            .map((role) => [
+              `expression.tokens.color.${role}`,
+              fromLogo(r.colors[role]) ? "measured from your logo" : detectedColors.length ? "website / image colours" : "AI guess",
+            ])
+        ),
       },
     });
 

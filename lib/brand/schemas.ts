@@ -138,6 +138,18 @@ export const VisualInsightsSchema = z.object({
 });
 export type VisualInsights = z.infer<typeof VisualInsightsSchema>;
 
+export const ImageTagSchema = z.object({
+  index: z.coerce.number().catch(-1),
+  subject: str,
+  setting: str,
+  style: str,
+  people: z.enum(["none", "one", "group"]).catch("none"),
+  textOnImage: z.boolean().catch(false),
+  productVisible: z.boolean().catch(false),
+});
+export type ImageTags = z.infer<typeof ImageTagSchema>;
+export const ImageTagsSchema = z.array(ImageTagSchema).catch([]);
+
 // ── Generated post (generate-post@2) ────────────────────────────────────────
 const shortList = (max: number) => z.array(z.string()).catch([]).transform((a) => a.map((s) => s.trim()).filter(Boolean).slice(0, max));
 

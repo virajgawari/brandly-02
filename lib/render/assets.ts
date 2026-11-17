@@ -110,6 +110,33 @@ export async function downloadAsJpeg(url: string, maxSide = 1600): Promise<{ buf
   }
 }
 
+export interface ImagePixels {
+  data: Uint8Array;
+  channels: 3 | 4;
+  /** 512px JPEG for the vision call, so each photo is downloaded once. */
+  jpeg512?: Buffer;
+}
+
+/** Downsampled raw pixels (RGBA, transparency kept) plus a small JPEG. SVG logos are rasterised at 300 dpi. */
+export async function imagePixels(url: string, side = 64): Promise<ImagePixels | null> {
+  try {
+    const bytes = await fetchBytes(url);
+    const sharp = await getSharp();
+    if (!bytes || !sharp) return null;
+    const isSvg = bytes.type.includes("svg") || bytes.buf.subarray(0, 200).toString("utf8").includes("<svg");
+    const base = () => sharp(bytes.buf, { density: isSvg ? 300 : undefined, animated: false }).rotate();
+    const { data } = await base().resize(side, side, { fit: "inside" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const jpeg512 = await base()
+      .resize({ width: 512, height: 512, fit: "inside", withoutEnlargement: !isSvg })
+      .flatten({ background: "#ffffff" })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    return { data: new Uint8Array(data), channels: 4, jpeg512 };
+  } catch {
+    return null;
+  }
+}
+
 /** Average tone of an image's visible (non-transparent) pixels. */
 export async function imageTone(dataUri: string | undefined): Promise<"light" | "dark" | undefined> {
   if (!dataUri?.startsWith("data:")) return undefined;

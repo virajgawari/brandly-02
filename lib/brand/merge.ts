@@ -88,7 +88,8 @@ export function mergePatch(model: BrandModel, patch: ModelPatch, opts: MergeOpti
   const now = new Date().toISOString();
 
   for (const [path, value] of Object.entries(flattenPatch(patch))) {
-    if (isEmptyValue(value)) continue;
+    // Machines never blank a field, but an owner clearing a field or removing the last list item is a real edit.
+    if (opts.source === "user" ? value === null || value === undefined : isEmptyValue(value)) continue;
     if (opts.source !== "user" && isLocked(next, path)) {
       skippedLocked.push(path);
       continue;

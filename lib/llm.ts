@@ -28,7 +28,9 @@ interface LlmReply {
 //   fast     → extraction, scoring, captions, everyday posts (cheap, high volume)
 //   vision   → PDF pages, screenshots (Groq has no vision model, so Gemini/Claude)
 //   creative → brand synthesis and Build "directions" (once per brand)
-export type LlmTask = "fast" | "vision" | "creative";
+//   judge    → rating text against a rubric. Gemini first so the judge is a different model
+//              family from the writers (Groq first); Groq is the fallback, never Claude by default.
+export type LlmTask = "fast" | "vision" | "creative" | "judge";
 
 const list = (env: string | undefined, fallback: string[]) =>
   env ? env.split(",").map((m) => m.trim()).filter(Boolean) : fallback;
@@ -53,6 +55,12 @@ export const MODELS: Record<LlmTask, { order: Provider[] } & Record<Provider, st
     groq: list(process.env.MODEL_CREATIVE_GROQ, ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"]),
     claude: list(process.env.MODEL_CREATIVE_CLAUDE, ["claude-sonnet-5-5"]),
     gemini: list(process.env.MODEL_CREATIVE_GEMINI, ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash"]),
+  },
+  judge: {
+    order: ["gemini", "groq", "claude"],
+    groq: list(process.env.MODEL_JUDGE_GROQ, ["openai/gpt-oss-120b"]),
+    claude: list(process.env.MODEL_JUDGE_CLAUDE, []),
+    gemini: list(process.env.MODEL_JUDGE_GEMINI, ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"]),
   },
 };
 

@@ -10,6 +10,12 @@ const strArr = z.array(z.string()).catch([]);
 const unit = z.coerce.number().min(0).max(1).catch(0.5); // confidences stay 0–1
 const opt = z.coerce.number().finite().optional().catch(undefined);
 
+/** Which evidence refs (E1, E2…) the model says each field rests on. Bad shapes become {} so a stage never fails on it. */
+export const CitesSchema = z
+  .record(z.string(), z.array(z.string()).catch([]))
+  .catch({})
+  .default({});
+
 /** Tone axes, 0–100. Replies that still use -1..1 (older prompts, the n8n workflow) are converted; gaps become 50. */
 export const tonePct = z
   .object({ funny_serious: opt, formal_casual: opt, respectful_irreverent: opt, enthusiastic_matter: opt })
@@ -114,6 +120,7 @@ export const ExtractSchema = z.object({
   hashtagClusters: strArr,
   do: strArr,
   dont: strArr,
+  cites: CitesSchema,
 });
 export type ExtractResult = z.infer<typeof ExtractSchema>;
 
@@ -123,6 +130,7 @@ export const ContentSystemSchema = z.object({
   hashtagClusters: strArr,
   do: strArr,
   dont: strArr,
+  cites: CitesSchema,
 });
 export type ContentSystemResult = z.infer<typeof ContentSystemSchema>;
 

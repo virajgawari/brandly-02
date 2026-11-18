@@ -67,7 +67,7 @@ export function buildPostPrompt(r: PostRequest): { system: string; user: string;
     "",
     `Return JSON:
 {
-  "caption": "the main caption (Instagram style)",
+  "caption": "the main caption (Instagram style). Do NOT put hashtags or the call to action in it; they are separate fields",
   "hashtags": ["#tag", ...5-10],
   "cta": "one clear call to action sentence",
   "headline": "max 8 words, for the image",
@@ -83,7 +83,7 @@ export function buildPostPrompt(r: PostRequest): { system: string; user: string;
     "usesProductPhoto": true if a real photo of the product would suit better than a staged scene
   },
   "bestTimeToPost": "e.g. Tue-Thu 7-9pm",
-  "postType": "Single image | Carousel | Reel | Story",
+  "postType": "exactly one of: Single image, Carousel, Reel, Story",
   "platformVariants": { ${platforms.map((p) => `"${p}": "..."`).join(", ")} }
 }
 platformVariants: only ${platforms.join(", ")}. facebook = more conversational, no hashtags; linkedin = insight-led, max 3 hashtags; twitter = under 280 chars total.`,
@@ -121,6 +121,22 @@ export function productSlides(products: ProductRef[], written: CarouselSlide[], 
   ];
 }
 
+const POST_TYPES = ["Single image", "Carousel", "Reel", "Story"];
+
+/** Keeps postType to one real value; the model sometimes echoes the whole option list. */
+export function cleanPostType(v?: string): string {
+  const t = (v ?? "").trim();
+  return POST_TYPES.find((x) => x.toLowerCase() === t.toLowerCase()) ?? "Single image";
+}
+
+/** Removes inline hashtags and a repeated CTA from caption text; both are shown separately. */
+export function cleanCaption(text: string, cta: string): string {
+  let out = text.replace(/(?:\s*#[\p{L}\p{N}_]+)+\s*$/u, "").trim();
+  const c = cta.trim();
+  if (c && out.toLowerCase().endsWith(c.toLowerCase())) out = out.slice(0, out.length - c.length).trim();
+  return out;
+}
+
 /** Normalises a model reply (validated or raw from n8n) into a GeneratedPost with brief metadata attached. */
 export function finalizePost(raw: unknown, r: Pick<PostRequest, "model" | "dna" | "brief" | "platforms">): GeneratedPost | null {
   const parsed = GeneratedPostSchema.safeParse(raw);
@@ -135,11 +151,11 @@ export function finalizePost(raw: unknown, r: Pick<PostRequest, "model" | "dna" 
   const cta = p?.cta ?? loose.cta ?? "";
   const written = p?.slides ?? loose.slides ?? [];
   return {
-    caption: p?.caption ?? loose.caption!,
+    caption: cleanCaption(p?.caption ?? loose.caption!, cta),
     hashtags: p?.hashtags ?? (loose.hashtags ?? []).slice(0, 10),
     cta,
     bestTimeToPost: p?.bestTimeToPost || loose.bestTimeToPost || "",
-    postType: r.brief.carousel ? "Carousel" : p?.postType || loose.postType || "Single image",
+    postType: r.brief.carousel ? "Carousel" : cleanPostType(p?.postType || loose.postType),
     platformVariants: Object.fromEntries(Object.entries(variants).filter(([k]) => (r.platforms as string[]).includes(k))),
     imagePrompt: imagePromptFromBrief(vb, r.model, r.dna, loose.imagePrompt ?? headline),
     format: r.brief.format.id,

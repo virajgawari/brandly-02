@@ -53,7 +53,7 @@ export default function ComposerPage() {
   useEffect(() => () => clearTimeout(textTimer.current), []);
 
   type PhotoChoice = RenderedMedia["photo"] | null | "auto" | "generate";
-  const callRender = async (p: GeneratedPost, o: { layout?: LayoutId; photo?: PhotoChoice; size?: RenderedMedia["size"]; store?: boolean; key?: string }) => {
+  const callRender = async (p: GeneratedPost, o: { layout?: LayoutId; photo?: PhotoChoice; size?: RenderedMedia["size"]; store?: boolean; key?: string }, onPhotoError?: (msg: string) => void) => {
     const res = await fetch("/api/render-post", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -61,6 +61,7 @@ export default function ComposerPage() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.rendered) throw new Error(data.error ?? `Couldn't make the image (HTTP ${res.status})`);
+    if (data.photoError) onPhotoError?.(data.photoError);
     return data.rendered as RenderedMedia;
   };
 
@@ -71,9 +72,11 @@ export default function ComposerPage() {
     setRendering(true);
     setRenderError(null);
     try {
-      const r = await callRender(p, o);
+      let photoError: string | undefined;
+      const r = await callRender(p, o, (m) => (photoError = m));
       if (seq !== renderSeq.current) return;
       setRendered(r);
+      if (photoError) setRenderError(photoError);
       setSaved(false);
       if (o.photo === "generate" && generationId) track("image_generated", { generationId, props: { layout: r.layout } });
     } catch (err) {

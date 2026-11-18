@@ -399,6 +399,9 @@ export default function ComposerPage() {
             >
               {generating ? "Writing…" : "Write post"}
             </Button>
+            {selectedPlatforms.length === 0 && (
+              <p className="text-xs text-text-muted text-center -mt-2">Pick at least one platform to write for.</p>
+            )}
           </div>
 
           {/* ── Right: Output ── */}

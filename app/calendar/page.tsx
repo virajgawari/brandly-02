@@ -171,7 +171,7 @@ export default function CalendarPage() {
       // Preserve the time component of the original scheduledAt if dropping on the same day
       // Otherwise, set to a default time for the new day (e.g., 9 AM)
       const originalScheduledAt = parseISO(postToUpdate.scheduledAt);
-      let updatedScheduledAt = newDate;
+      const updatedScheduledAt = newDate;
 
       if (isSameDay(originalScheduledAt, newDate)) {
         updatedScheduledAt.setHours(originalScheduledAt.getHours());

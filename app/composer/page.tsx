@@ -64,6 +64,7 @@ export default function ComposerPage() {
 
   // Arriving from the catalogue (/composer?product=<id>): start the brief from that product.
   const catalogBrandId = brand?.id;
+  const [catalogProductId, setCatalogProductId] = useState<string | undefined>(undefined);
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("product");
     if (!id || !catalogBrandId) return;
@@ -73,6 +74,7 @@ export default function ComposerPage() {
       .then((d: { products: { id: string; name: string; description: string; price: string | null }[] } | null) => {
         const p = d?.products.find((x) => x.id === id);
         if (!live || !p) return;
+        setCatalogProductId(p.id);
         setTopic(p.name);
         setAdditionalContext([p.description, p.price ? `Price: ${p.price}` : ""].filter(Boolean).join("\n"));
         setOptionsOpen(true);
@@ -282,7 +284,7 @@ export default function ComposerPage() {
       createdAt: new Date().toISOString(),
       ...(content.rendered?.urls[0] ? { mediaUrl: content.rendered.urls[0] } : {}),
     };
-    addPost(scheduled, { template: selectedTemplate, topic: topic || undefined });
+    addPost(scheduled, { template: selectedTemplate, topic: topic || undefined, productId: catalogProductId });
     setSaving(false);
     setSaved(true);
   };

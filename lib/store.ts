@@ -40,7 +40,7 @@ interface AppState {
 
   // Posts
   posts: ScheduledPost[];
-  addPost: (post: ScheduledPost, meta?: { template?: string; topic?: string }) => void;
+  addPost: (post: ScheduledPost, meta?: { template?: string; topic?: string; productId?: string }) => void;
   updatePost: (id: string, updates: Partial<ScheduledPost>) => void;
   deletePost: (id: string) => void;
   getPostsByBrand: (brandId: string) => ScheduledPost[];

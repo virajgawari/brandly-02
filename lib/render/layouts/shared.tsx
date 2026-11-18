@@ -179,6 +179,26 @@ export function Frame({ bg, children, style }: { bg: string; children: ReactNode
   return <div style={{ display: "flex", position: "relative", width: "100%", height: "100%", background: bg, ...style }}>{children}</div>;
 }
 
+/** Photo filling the whole frame, uncropped when it has the frame's aspect, with a dark fade at the bottom for text. */
+export function FullBleedPhoto({ p }: { p: LayoutProps }) {
+  return (
+    <div style={{ display: "flex", position: "absolute", top: 0, left: 0, width: p.width, height: p.height }}>
+      <Photo p={p} style={{ width: p.width, height: p.height }} />
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: p.width,
+          height: p.height,
+          backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,0) 30%, rgba(0,0,0,0.88) 100%)",
+        }}
+      />
+    </div>
+  );
+}
+
 export function Photo({ p, style }: { p: LayoutProps; style?: CSSProperties }) {
   if (!p.photo) return <div style={{ display: "flex", background: p.colors.secondary, ...style }} />;
   return <img src={p.photo} style={{ objectFit: "cover", ...style }} />;

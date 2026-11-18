@@ -78,6 +78,8 @@ export interface RenderedMedia {
   photo?: { kind: "brand" | "generated"; ref: string };
   /** Elements hidden on the image (all shown when absent). */
   show?: { logo?: boolean; cta?: boolean; subline?: boolean };
+  /** Carousel: one photo per slide, same order as post.slides. `photo` is the first. */
+  slidePhotos?: { kind: "brand" | "generated"; ref: string }[];
 }
 
 export interface GeneratedPost {

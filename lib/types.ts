@@ -102,6 +102,18 @@ export interface GeneratedPost {
   /** Layout chosen for the visual. */
   layout?: import("./brand/model").LayoutId;
   rendered?: RenderedMedia;
+  /** Result of the rule and brand-fit checks run after generation. */
+  check?: PostCheck;
+}
+
+export interface PostCheck {
+  rules: import("./judge/rules").RuleCheck;
+  fit: import("./judge/fit").FitCheck;
+  /** True when the post was rewritten once after failing a check. */
+  revised: boolean;
+  version: string;
+  /** Headline and caption the check ran on; the composer flags the check stale when they change. */
+  text?: string;
 }
 
 export interface ScheduledPost {

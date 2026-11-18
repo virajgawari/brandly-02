@@ -5,6 +5,7 @@ import AppShell from "@/components/layout/AppShell";
 import { useStore } from "@/lib/store";
 import { Button, Input, Textarea, Card, Chip, SectionLabel, PageHeader, EmptyState } from "@/components/ui";
 import PlatformPreview from "@/components/composer/PlatformPreview";
+import { Scorecard } from "@/components/composer/Scorecard";
 import Link from "next/link";
 import type { GeneratedPost, Platform, ProductRef, RenderedMedia, TemplateCategory, ScheduledPost } from "@/lib/types";
 import { chunkProducts, MAX_CAROUSEL_PRODUCTS } from "@/lib/content/brief";
@@ -445,6 +446,8 @@ export default function ComposerPage() {
                   images={rendered?.urls ?? []}
                   imageLoading={rendering}
                 />
+
+                {post.check && <Scorecard check={post.check} text={[post.headline, post.caption].filter(Boolean).join("\n")} />}
 
                 {/* All captions */}
                 {selectedPlatforms.length > 1 && (

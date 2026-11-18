@@ -45,6 +45,7 @@ export default async function Page() {
 
       <header className="sticky top-0 z-20 bg-bg/85 backdrop-blur border-b border-border/60">
         <div className="max-w-6xl mx-auto px-4 sm:px-8 h-16 flex items-center justify-between">
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a href="/" aria-label="Brandly home" className="font-semibold tracking-tight">
             Brandly
           </a>

@@ -37,6 +37,7 @@ export default function Sidebar() {
   return (
     <aside className="hidden md:flex w-60 shrink-0 h-screen bg-surface border-r border-border flex-col sticky top-0">
       {/* Plain anchor on purpose: a full page load refreshes the data and lands on Home. */}
+      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
       <a href="/" aria-label="Brandly home" className="px-4 h-14 flex items-center gap-2 border-b border-border">
         <span className="w-6 h-6 rounded-md bg-text text-bg grid place-items-center text-[13px] font-bold">B</span>
         <span className="text-[15px] font-semibold tracking-tight">Brandly</span>

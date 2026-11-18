@@ -2,6 +2,7 @@
 export default function AuthCard({ title, subtitle, children, footer }: { title: string; subtitle?: string; children: React.ReactNode; footer?: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-bg flex flex-col items-center justify-center px-4 py-10">
+      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
       <a href="/" aria-label="Brandly home" className="flex items-center gap-2 mb-8">
         <span className="w-7 h-7 rounded-md bg-text text-bg grid place-items-center text-sm font-bold">B</span>
         <span className="text-base font-semibold tracking-tight">Brandly</span>

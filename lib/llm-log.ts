@@ -36,6 +36,7 @@ export interface LlmCallRecord {
   latency_ms?: number;
   attempts: number;
   fallback_from?: string;
+  cost_usd?: number;
   error?: string;
 }
 

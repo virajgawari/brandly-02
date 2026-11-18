@@ -47,8 +47,9 @@ export async function POST(req: NextRequest) {
     let photo: PhotoRef | undefined = typeof b.photo === "object" && b.photo ? b.photo : undefined;
     if (isProduct) {
       // Product photos come from the slides themselves; nothing to choose or generate.
-    } else if (b.photo === "generate") photo = await generatePhoto(b.post, aspect);
-    else if ((b.photo === undefined || b.photo === "auto") && layoutNeedsPhoto(layout)) photo = await resolvePhoto(model, b.post, history, aspect);
+    } else if (b.photo === "generate") photo = await generatePhoto(session, model, b.post, aspect);
+    else if ((b.photo === undefined || b.photo === "auto") && layoutNeedsPhoto(layout)) photo = await resolvePhoto(session, model, b.post, history, aspect);
+    const photoError = b.photo === "generate" && !isProduct && !photo ? "Couldn't make a new photo, try again." : undefined;
 
     const visuals = await loadVisuals(session, model, photo);
     const slidePhotos = isProduct ? await loadSlidePhotos(session, model, (b.post.slides ?? []).map((s) => s.photoPath)) : undefined;
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
       const previews = await Promise.all(pngs.map((p) => encodeForUpload(p, 80)));
       rendered = { layout, paths: [], urls: previews.map((x) => `data:${x.mime};base64,${x.buf.toString("base64")}`), size, photo };
     }
-    return NextResponse.json({ rendered, layouts: kit.layouts });
+    return NextResponse.json({ rendered, layouts: kit.layouts, photoError });
   } catch (err) {
     return errorResponse(err, "render-post");
   }

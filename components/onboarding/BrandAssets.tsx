@@ -2,6 +2,7 @@
 import { useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import type { BrandPhoto } from "@/lib/brand/model";
+import { uploadBrandImage } from "@/lib/brand/upload-client";
 
 export interface LogoAsset {
   path: string;
@@ -35,11 +36,7 @@ const readDataUri = (file: File) =>
   });
 
 async function post(brandId: string, file: File, role: "logo" | "product") {
-  const form = new FormData();
-  form.append("file", file);
-  form.append("role", role);
-  const res = await fetch(`/api/brands/${brandId}/photos`, { method: "POST", body: form });
-  return (await res.json().catch(() => ({}))) as { photo?: BrandPhoto; logoPath?: string; url?: string; error?: string };
+  return uploadBrandImage(brandId, file, role);
 }
 
 /** Onboarding step: upload a logo and product photos. Both are optional. */

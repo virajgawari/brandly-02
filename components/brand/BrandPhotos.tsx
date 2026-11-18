@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import type { BrandModel, BrandPhoto } from "@/lib/brand/model";
 import { productFromTags } from "@/lib/brand/describe";
+import { uploadBrandImage } from "@/lib/brand/upload-client";
 
 const isProduct = (p: BrandPhoto) => p.role === "product";
 
@@ -41,14 +42,11 @@ export function PhotoGrid({ model, role, onChange }: { model: BrandModel; role: 
     setError(null);
     const added: BrandPhoto[] = [];
     for (const file of [...files].slice(0, 12)) {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("role", role);
-      const res = await fetch(`/api/brands/${model.id}/photos`, { method: "POST", body: form });
-      const data = await res.json().catch(() => ({}));
-      if (data.photo) {
-        added.push(role === "product" ? { ...data.photo, role: "product" } : data.photo);
-        setUrls((u) => ({ ...u, [data.photo.path]: data.url }));
+      const data = await uploadBrandImage(model.id, file, role === "product" ? "product" : "lifestyle");
+      const photo = data.photo;
+      if (photo) {
+        added.push(role === "product" ? { ...photo, role: "product" } : photo);
+        if (data.url) setUrls((u) => ({ ...u, [photo.path]: data.url! }));
       } else setError(data.error ?? "Upload failed");
     }
     const fresh = added.filter((a) => !latest.current.some((p) => p.path === a.path));

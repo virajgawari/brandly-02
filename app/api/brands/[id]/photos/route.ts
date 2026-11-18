@@ -4,6 +4,8 @@ import { saveBrandPhoto, saveUploadedLogo } from "@/lib/brand/photos";
 import { signPaths } from "@/lib/render/media";
 import { toRenderable } from "@/lib/render/assets";
 
+export const maxDuration = 60;
+
 // Brand photos live in the `images` bucket under <workspace>/brands/<brand>/photos/.
 // The list itself is part of the Brand Model (expression.photos), saved by the client.
 

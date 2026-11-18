@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import type { BrandModel } from "@/lib/brand/model";
+import { uploadBrandImage } from "@/lib/brand/upload-client";
 
 /** Shows the brand's logo and lets the owner replace it with their own file. */
 export function LogoUpload({ model, onChange }: { model: BrandModel; onChange: (logoPath: string) => void }) {
@@ -25,11 +26,7 @@ export function LogoUpload({ model, onChange }: { model: BrandModel; onChange: (
     if (!file) return;
     setBusy(true);
     setError(null);
-    const form = new FormData();
-    form.append("file", file);
-    form.append("role", "logo");
-    const res = await fetch(`/api/brands/${model.id}/photos`, { method: "POST", body: form });
-    const data = (await res.json().catch(() => ({}))) as { logoPath?: string; url?: string; error?: string };
+    const data = await uploadBrandImage(model.id, file, "logo");
     if (data.logoPath) {
       if (data.url) setSigned((s) => ({ ...s, [data.logoPath!]: data.url! }));
       onChange(data.logoPath);

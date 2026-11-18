@@ -1,11 +1,15 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { PlatformIcon, TemplateIcon, TriggerIcon } from "@/components/ui/icons";
+import { PlatformIcon, TemplateIcon } from "@/components/ui/icons";
 import AppShell from "@/components/layout/AppShell";
 import { useStore } from "@/lib/store";
 import { Button, Input, Textarea, Card, Chip, SectionLabel, PageHeader, EmptyState } from "@/components/ui";
 import PlatformPreview from "@/components/composer/PlatformPreview";
 import { Scorecard } from "@/components/composer/Scorecard";
+import IdeaCards from "@/components/composer/IdeaCards";
+import PhoneFrame from "@/components/composer/PhoneFrame";
+import { EditSection } from "@/components/composer/EditPanel";
+import type { PostIdea } from "@/lib/content/ideas";
 import Link from "next/link";
 import type { GeneratedPost, Platform, ProductRef, RenderedMedia, TemplateCategory, ScheduledPost } from "@/lib/types";
 import { chunkProducts, MAX_CAROUSEL_PRODUCTS } from "@/lib/content/brief";
@@ -49,16 +53,42 @@ export default function ComposerPage() {
   const [picked, setPicked] = useState<string[]>([]);
   const [batch, setBatch] = useState(0);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  const [show, setShow] = useState<{ logo: boolean; cta: boolean; subline: boolean }>({ logo: true, cta: true, subline: true });
+  const [ideas, setIdeas] = useState<PostIdea[]>([]);
+  const [ideasLoading, setIdeasLoading] = useState(false);
+  const [ideasError, setIdeasError] = useState<string | null>(null);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const renderSeq = useRef(0);
   const textTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(textTimer.current), []);
 
+  // Arriving from the catalogue (/composer?product=<id>): start the brief from that product.
+  const catalogBrandId = brand?.id;
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("product");
+    if (!id || !catalogBrandId) return;
+    let live = true;
+    fetch(`/api/products?brandId=${catalogBrandId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { products: { id: string; name: string; description: string; price: string | null }[] } | null) => {
+        const p = d?.products.find((x) => x.id === id);
+        if (!live || !p) return;
+        setTopic(p.name);
+        setAdditionalContext([p.description, p.price ? `Price: ${p.price}` : ""].filter(Boolean).join("\n"));
+        setOptionsOpen(true);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [catalogBrandId]);
+
   type PhotoChoice = RenderedMedia["photo"] | null | "auto" | "generate";
-  const callRender = async (p: GeneratedPost, o: { layout?: LayoutId; photo?: PhotoChoice; size?: RenderedMedia["size"]; store?: boolean; key?: string }, onPhotoError?: (msg: string) => void) => {
+  const callRender = async (p: GeneratedPost, o: { layout?: LayoutId; photo?: PhotoChoice; size?: RenderedMedia["size"]; store?: boolean; key?: string; show?: typeof show }, onPhotoError?: (msg: string) => void) => {
     const res = await fetch("/api/render-post", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ brandModel: brand?.model, post: p, layout: o.layout ?? p.layout, photo: o.photo, size: o.size ?? size, store: o.store, key: o.key }),
+      body: JSON.stringify({ brandModel: brand?.model, post: p, layout: o.layout ?? p.layout, photo: o.photo, size: o.size ?? size, store: o.store, key: o.key, show: o.show ?? show }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.rendered) throw new Error(data.error ?? `Couldn't make the image (HTTP ${res.status})`);
@@ -67,7 +97,7 @@ export default function ComposerPage() {
   };
 
   /** Renders the branded preview. Only the latest request updates the screen. */
-  const renderPreview = async (p: GeneratedPost, o: { layout?: LayoutId; photo?: PhotoChoice; size?: RenderedMedia["size"] } = {}) => {
+  const renderPreview = async (p: GeneratedPost, o: { layout?: LayoutId; photo?: PhotoChoice; size?: RenderedMedia["size"]; show?: typeof show } = {}) => {
     if (!brand?.model) return;
     const seq = ++renderSeq.current;
     setRendering(true);
@@ -103,6 +133,40 @@ export default function ComposerPage() {
     setPost(next);
     clearTimeout(textTimer.current);
     textTimer.current = setTimeout(() => renderPreview(next, { photo: currentPhoto() }), 600);
+  };
+
+  const toggleShow = (k: keyof typeof show, v: boolean) => {
+    const next = { ...show, [k]: v };
+    setShow(next);
+    if (post) renderPreview(post, { photo: currentPhoto(), show: next });
+  };
+
+  const suggestIdeas = async () => {
+    if (!brand?.model) return;
+    setIdeasLoading(true);
+    setIdeasError(null);
+    try {
+      const res = await fetch("/api/suggest-ideas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandModel: brand.model }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ideas) throw new Error(data.error ?? "Couldn't get ideas just now.");
+      setIdeas(data.ideas as PostIdea[]);
+    } catch (err) {
+      setIdeasError(err instanceof Error ? err.message : String(err));
+    }
+    setIdeasLoading(false);
+  };
+
+  const pickIdea = (i: PostIdea) => {
+    setSelectedTemplate(i.template as TemplateCategory);
+    setTopic(`${i.title}. ${i.pitch}`);
+    generate(batch, { template: i.template as TemplateCategory, topic: `${i.title}. ${i.pitch}` });
+  };
+
+  const backToIdeas = () => {
+    setPost(null);
+    setRendered(null);
+    setGenError(null);
+    setSaved(false);
   };
 
   const brandPhotos = brand?.model?.expression.photos ?? [];
@@ -145,7 +209,7 @@ export default function ComposerPage() {
     );
   };
 
-  const generate = async (batchIndex = batch) => {
+  const generate = async (batchIndex = batch, over?: { template: TemplateCategory; topic: string }) => {
     if (!brand || selectedPlatforms.length === 0) return;
     const products = carouselOn ? productsFor(batchIndex) : [];
     if (carouselOn && products.length < 2) {
@@ -169,8 +233,8 @@ export default function ComposerPage() {
       body: JSON.stringify({
         brandDNA: brand.dna,
         brandModel: brand.model,
-        template: selectedTemplate,
-        topic,
+        template: over?.template ?? selectedTemplate,
+        topic: over?.topic ?? topic,
         platforms: selectedPlatforms,
         tone: tone === "Brand default" ? undefined : tone,
         additionalContext,
@@ -243,322 +307,300 @@ export default function ComposerPage() {
     );
   }
 
+  const editing = !!post || generating;
+
+  const optionsBlock = (
+    <div className="space-y-5 text-left">
+      <div>
+        <SectionLabel>Content Template</SectionLabel>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {CONTENT_TEMPLATES.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setSelectedTemplate(t.id)}
+              className={`p-3 rounded-xl text-left transition-all border text-xs ${selectedTemplate === t.id ? "bg-accent/10 border-accent/40 text-text" : "border-border text-text-muted hover:border-accent/30 hover:text-text"}`}
+            >
+              <span className="block mb-1.5"><TemplateIcon id={t.id} /></span>
+              <span className="font-medium">{t.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <SectionLabel>Platforms</SectionLabel>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {PLATFORMS.map((p) => (
+            <button
+              key={p}
+              onClick={() => togglePlatform(p)}
+              className={`flex items-center gap-2 p-2.5 rounded-xl text-xs font-medium border transition-all ${selectedPlatforms.includes(p) ? "bg-accent/10 border-accent/40 text-text" : "border-border text-text-muted hover:border-accent/30"}`}
+            >
+              <span><PlatformIcon platform={p} /></span>
+              {PLATFORM_LABELS[p]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <SectionLabel>Tone Override</SectionLabel>
+        <div className="flex flex-wrap gap-2">
+          {TONES.map((t) => (
+            <button
+              key={t}
+              onClick={() => setTone(t)}
+              className={`text-xs px-3 py-1.5 rounded-full border transition-all ${tone === t ? "bg-accent/10 border-accent/40 text-accent-light" : "border-border text-text-muted hover:border-accent/30 hover:text-text"}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <Textarea label="Additional Context" placeholder="Any specific details, promotions, or angles to include…" value={additionalContext} onChange={(e) => setAdditionalContext(e.target.value)} rows={3} />
+
+      {productPhotos.length >= 2 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <SectionLabel>Product carousel</SectionLabel>
+            <button
+              role="switch"
+              aria-checked={carouselOn}
+              onClick={() => setCarouselOn((v) => !v)}
+              className={`text-xs px-3 py-1 rounded-full border ${carouselOn ? "bg-accent/10 border-accent/40 text-accent-light" : "border-border text-text-muted hover:text-text"}`}
+            >
+              {carouselOn ? "On" : "Off"}
+            </button>
+          </div>
+          {carouselOn && (
+            <>
+              <p className="text-xs text-text-muted">Cover, one slide per product, then a call to action. Up to {MAX_CAROUSEL_PRODUCTS} products each.</p>
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                {productPhotos.map((p) => {
+                  const on = picked.includes(p.path);
+                  return (
+                    <button
+                      key={p.path}
+                      aria-pressed={on}
+                      onClick={() => togglePicked(p.path)}
+                      title={p.product?.name}
+                      className={`relative aspect-square rounded-lg overflow-hidden border-2 ${on ? "border-accent" : "border-transparent opacity-70 hover:opacity-100"}`}
+                    >
+                      {thumbs[p.path] && <img src={thumbs[p.path]} alt={p.product?.name ?? "Product"} className="w-full h-full object-cover" />}
+                      {on && <span className="absolute top-1 left-1 text-[10px] font-semibold bg-accent text-bg rounded px-1.5">{picked.indexOf(p.path) + 1}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-text-muted">
+                {picked.length === 0 ? "Tap the products to include." : batches.length > 1 ? `${picked.length} products make ${batches.length} carousels. Write the first, then use Next carousel.` : `${picked.length} selected.`}
+              </p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <AppShell>
-      <div className="p-8 max-w-7xl mx-auto">
-        <PageHeader
-          title="AI Composer"
-          subtitle={`Creating content for ${brand.name}`}
-        />
-
-        <div className="grid grid-cols-5 gap-6">
-          {/* ── Left: Controls ── */}
-          <div className="col-span-2 space-y-5">
-
-            {/* Template picker */}
-            <Card className="p-5">
-              <SectionLabel>Content Template</SectionLabel>
-              <div className="grid grid-cols-2 gap-2">
-                {CONTENT_TEMPLATES.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => setSelectedTemplate(t.id)}
-                    className={`p-3 rounded-xl text-left transition-all border text-xs ${
-                      selectedTemplate === t.id
-                        ? "bg-accent/10 border-accent/40 text-text"
-                        : "border-border text-text-muted hover:border-accent/30 hover:text-text"
-                    }`}
-                  >
-                    <span className="block mb-1.5"><TemplateIcon id={t.id} /></span>
-                    <span className="font-medium">{t.label}</span>
-                  </button>
-                ))}
+      <div className="p-4 sm:p-8 max-w-6xl mx-auto">
+        {!editing && (
+          <div className="max-w-3xl mx-auto text-center space-y-6">
+            <PageHeader title="What do you want to post?" subtitle={`Creating content for ${brand.name}`} />
+            <Textarea
+              label="Describe the post you want"
+              placeholder="e.g. Announce our new monsoon blend and why it's perfect for rainy mornings"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              rows={3}
+            />
+            <div className="flex gap-2 justify-center flex-wrap">
+              <Button variant="secondary" loading={ideasLoading} onClick={suggestIdeas}>Suggest ideas</Button>
+              <Button disabled={selectedPlatforms.length === 0} onClick={() => generate()}>Write post</Button>
+            </div>
+            {selectedPlatforms.length === 0 && <p className="text-xs text-text-muted">Pick at least one platform in Options.</p>}
+            {genError && <p className="text-sm text-error">{genError}</p>}
+            {ideasError && <p className="text-sm text-error">{ideasError}</p>}
+            <div>
+              <button aria-expanded={optionsOpen} onClick={() => setOptionsOpen((o) => !o)} className="text-xs text-text-muted hover:text-text underline">
+                {optionsOpen ? "Hide options" : "Options: template, platforms, tone, product carousel"}
+              </button>
+            </div>
+            {optionsOpen && <Card className="p-5">{optionsBlock}</Card>}
+            {(ideasLoading || ideas.length > 0) && (
+              <div className="space-y-3 text-left">
+                <SectionLabel>Based on your brand</SectionLabel>
+                <IdeaCards ideas={ideas} loading={ideasLoading} disabled={selectedPlatforms.length === 0} onPick={pickIdea} />
               </div>
-            </Card>
-
-            {/* Product carousel */}
-            {productPhotos.length >= 2 && (
-              <Card className="p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <SectionLabel>Product carousel</SectionLabel>
-                  <button
-                    role="switch"
-                    aria-checked={carouselOn}
-                    onClick={() => setCarouselOn((v) => !v)}
-                    className={`text-xs px-3 py-1 rounded-full border ${carouselOn ? "bg-accent/10 border-accent/40 text-accent-light" : "border-border text-text-muted hover:text-text"}`}
-                  >
-                    {carouselOn ? "On" : "Off"}
-                  </button>
-                </div>
-                {carouselOn && (
-                  <>
-                    <p className="text-xs text-text-muted">Cover, one slide per product, then a call to action. Up to {MAX_CAROUSEL_PRODUCTS} products each.</p>
-                    <div className="grid grid-cols-4 gap-2">
-                      {productPhotos.map((p) => {
-                        const on = picked.includes(p.path);
-                        return (
-                          <button
-                            key={p.path}
-                            aria-pressed={on}
-                            onClick={() => togglePicked(p.path)}
-                            title={p.product?.name}
-                            className={`relative aspect-square rounded-lg overflow-hidden border-2 ${on ? "border-accent" : "border-transparent opacity-70 hover:opacity-100"}`}
-                          >
-                            {thumbs[p.path] && <img src={thumbs[p.path]} alt={p.product?.name ?? "Product"} className="w-full h-full object-cover" />}
-                            {on && <span className="absolute top-1 left-1 text-[10px] font-semibold bg-accent text-bg rounded px-1.5">{picked.indexOf(p.path) + 1}</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="text-xs text-text-muted">
-                      {picked.length === 0
-                        ? "Tap the products to include."
-                        : batches.length > 1
-                        ? `${picked.length} products make ${batches.length} carousels. Write the first, then use Next carousel.`
-                        : `${picked.length} selected.`}
-                    </p>
-                  </>
-                )}
-              </Card>
-            )}
-
-            {/* Platforms */}
-            <Card className="p-5">
-              <SectionLabel>Platforms</SectionLabel>
-              <div className="grid grid-cols-2 gap-2">
-                {PLATFORMS.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => togglePlatform(p)}
-                    className={`flex items-center gap-2 p-2.5 rounded-xl text-xs font-medium border transition-all ${
-                      selectedPlatforms.includes(p)
-                        ? "bg-accent/10 border-accent/40 text-text"
-                        : "border-border text-text-muted hover:border-accent/30"
-                    }`}
-                  >
-                    <span><PlatformIcon platform={p} /></span>
-                    {PLATFORM_LABELS[p]}
-                  </button>
-                ))}
-              </div>
-            </Card>
-
-            {/* Topic & tone */}
-            <Card className="p-5 space-y-4">
-              <Input
-                label="Topic / Focus"
-                placeholder="e.g. New summer collection launch"
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-              />
-              <div>
-                <SectionLabel>Tone Override</SectionLabel>
-                <div className="flex flex-wrap gap-2">
-                  {TONES.map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setTone(t)}
-                      className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
-                        tone === t
-                          ? "bg-accent/10 border-accent/40 text-accent-light"
-                          : "border-border text-text-muted hover:border-accent/30 hover:text-text"
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <Textarea
-                label="Additional Context"
-                placeholder="Any specific details, promotions, or angles to include…"
-                value={additionalContext}
-                onChange={(e) => setAdditionalContext(e.target.value)}
-                rows={3}
-              />
-            </Card>
-
-            {/* Brand DNA at a glance */}
-            <Card className="p-5">
-              <SectionLabel>Active Brand DNA</SectionLabel>
-              <div className="flex gap-1.5 mb-3">
-                {Object.entries(brand.dna.colors).map(([, hex]) => (
-                  <div key={hex} className="w-5 h-5 rounded" style={{ background: hex }} />
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {brand.dna.vibe.slice(0, 3).map((v) => (
-                  <Chip key={v} variant="accent" className="text-[10px]">{v}</Chip>
-                ))}
-              </div>
-              <p className="text-xs text-text-muted">{brand.dna.communication_tone}</p>
-            </Card>
-
-            <Button
-              className="w-full"
-              size="lg"
-              loading={generating}
-              disabled={selectedPlatforms.length === 0}
-              onClick={() => generate()}
-            >
-              {generating ? "Writing…" : "Write post"}
-            </Button>
-            {selectedPlatforms.length === 0 && (
-              <p className="text-xs text-text-muted text-center -mt-2">Pick at least one platform to write for.</p>
             )}
           </div>
+        )}
 
-          {/* ── Right: Output ── */}
-          <div className="col-span-3 space-y-5">
-            {!post && !generating && (
-              <div className="flex flex-col items-center justify-center h-full min-h-[500px] text-center gap-4 border-2 border-dashed border-border rounded-2xl">
-                <p className="font-medium text-text">Your post will appear here</p>
-                <p className="text-sm text-text-muted max-w-xs">
-                  Pick what it&apos;s about and where it&apos;s going, then press Write post.
-                </p>
-                {genError && <p className="text-sm text-error max-w-xs">{genError}</p>}
-              </div>
-            )}
-
-            {generating && (
-              <div className="flex flex-col items-center justify-center h-full min-h-[500px] gap-4">
-                <div className="w-full max-w-md space-y-3" aria-hidden>
-                  <div className="aspect-square rounded-xl bg-text/5 animate-pulse" />
-                  <div className="h-3 rounded bg-text/5 animate-pulse" />
-                  <div className="h-3 w-2/3 rounded bg-text/5 animate-pulse" />
-                </div>
-                <p className="text-sm text-text-muted">
-                  Writing for {selectedPlatforms.join(", ")} in {brand.name}&apos;s voice…
-                </p>
-              </div>
-            )}
-
-            {post && !generating && (
-              <>
-                {/* Platform preview */}
-                <PlatformPreview
-                  post={post}
-                  platforms={selectedPlatforms}
-                  brandDNA={brand.dna}
-                  igHandle={brand.sources.instagram}
-                  images={rendered?.urls ?? []}
-                  imageLoading={rendering}
-                />
-
-                {post.check && <Scorecard check={post.check} text={[post.headline, post.caption].filter(Boolean).join("\n")} />}
-
-                {/* All captions */}
-                {selectedPlatforms.length > 1 && (
-                  <Card className="p-5">
-                    <SectionLabel>All Platform Variants</SectionLabel>
-                    <div className="space-y-4">
-                      {selectedPlatforms.map((p) => (
-                        <div key={p}>
-                          <p className="text-xs font-semibold text-text-muted mb-1.5">
-                            <PlatformIcon platform={p} /> {PLATFORM_LABELS[p]}
-                          </p>
-                          <p className="text-sm leading-relaxed bg-surface p-3 rounded-xl">
-                            {post.platformVariants?.[p] ?? post.caption}
-                          </p>
-                        </div>
-                      ))}
+        {editing && (
+          <div>
+            <button onClick={backToIdeas} disabled={generating} className="text-xs text-text-muted hover:text-text mb-4">← Back to ideas</button>
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+              {/* Left: phone preview */}
+              <div className="lg:col-span-3 space-y-4">
+                {generating && (
+                  <div className="flex flex-col items-center justify-center min-h-[500px] gap-4">
+                    <div className="w-full max-w-sm space-y-3" aria-hidden>
+                      <div className="aspect-square rounded-xl bg-text/5 animate-pulse" />
+                      <div className="h-3 rounded bg-text/5 animate-pulse" />
+                      <div className="h-3 w-2/3 rounded bg-text/5 animate-pulse" />
                     </div>
-                  </Card>
+                    <p className="text-sm text-text-muted">Writing for {selectedPlatforms.join(", ")} in {brand.name}&apos;s voice…</p>
+                  </div>
                 )}
+                {post && !generating && (
+                  <>
+                    <PhoneFrame>
+                      <PlatformPreview post={post} platforms={selectedPlatforms} brandDNA={brand.dna} igHandle={brand.sources.instagram} images={rendered?.urls ?? []} imageLoading={rendering} />
+                    </PhoneFrame>
+                    {renderError && <p className="text-xs text-error text-center">{renderError}</p>}
+                    <div className="flex gap-2 justify-center flex-wrap">
+                      <Button variant="secondary" onClick={() => generate()}>Regenerate</Button>
+                      {isProductPost && batch + 1 < batches.length && (
+                        <Button variant="secondary" onClick={nextCarousel}>Next carousel ({batch + 2} of {batches.length}) →</Button>
+                      )}
+                    </div>
+                    {generationId && (
+                      <div className="max-w-[380px] mx-auto">
+                        {feedbackSent ? (
+                          <p className="text-sm text-text-muted text-center">Thanks. This helps Brandly write better posts for you.</p>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm flex-1">Is this post on-brand?</span>
+                              <Button size="sm" variant={rating === 1 ? "primary" : "secondary"} aria-pressed={rating === 1} onClick={() => {
+                                setRating(1);
+                                sendFeedback({ generationId, rating: 1 }).then(() => setFeedbackSent(true)).catch(() => undefined);
+                              }}>Yes</Button>
+                              <Button size="sm" variant={rating === -1 ? "primary" : "secondary"} aria-pressed={rating === -1} onClick={() => setRating(-1)}>Not quite</Button>
+                            </div>
+                            {rating === -1 && (
+                              <div className="mt-4 space-y-3">
+                                <div className="flex flex-wrap gap-1.5">
+                                  {BAD_REASONS.map((r) => (
+                                    <button
+                                      key={r}
+                                      aria-pressed={reasons.includes(r)}
+                                      onClick={() => setReasons((x) => (x.includes(r) ? x.filter((y) => y !== r) : [...x, r]))}
+                                      className={`text-xs px-3 py-1.5 rounded-full border ${reasons.includes(r) ? "bg-text text-bg border-text" : "border-border text-text-muted hover:text-text"}`}
+                                    >
+                                      {r}
+                                    </button>
+                                  ))}
+                                </div>
+                                <Button size="sm" onClick={() => sendFeedback({ generationId, rating: -1, reasons }).then(() => setFeedbackSent(true)).catch(() => undefined)}>Send</Button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+                {!post && !generating && genError && <p className="text-sm text-error text-center">{genError}</p>}
+              </div>
 
-                {/* Hashtags & metadata */}
-                <Card className="p-5 grid grid-cols-2 gap-5">
-                  <div>
-                    <SectionLabel>Hashtags</SectionLabel>
+              {/* Right: edit panel */}
+              {post && !generating && (
+                <div className="lg:col-span-2 space-y-3">
+                  <EditSection title="Image" defaultOpen>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-text-muted">Size</span>
+                      <div className="flex gap-1" role="group" aria-label="Image size">
+                        {(["1080x1350", "1080x1080"] as const).map((sz) => (
+                          <button
+                            key={sz}
+                            aria-pressed={size === sz}
+                            onClick={() => {
+                              setSize(sz);
+                              renderPreview(post, { size: sz, photo: currentPhoto() });
+                            }}
+                            className={`text-xs px-3 py-1 rounded-full border ${size === sz ? "bg-accent/10 border-accent/40 text-accent-light" : "border-border text-text-muted hover:text-text"}`}
+                          >
+                            {sz === "1080x1350" ? "4:5" : "1:1"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {kit && !isProductPost && (
+                      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Layout">
+                        {kit.layouts
+                          .filter((l) => l !== "carousel-cover" || (post.slides?.length ?? 0) >= 2)
+                          .map((l) => (
+                            <button
+                              key={l}
+                              aria-pressed={(rendered?.layout ?? post.layout) === l}
+                              onClick={() => switchLayout(l)}
+                              className={`text-xs px-3 py-1.5 rounded-full border transition-all ${(rendered?.layout ?? post.layout) === l ? "bg-text text-bg border-text" : "border-border text-text-muted hover:text-text"}`}
+                            >
+                              {LAYOUT_LABELS[l]}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                    <div className="flex gap-2 flex-wrap items-center">
+                      {brandPhotos.length > 0 && !isProductPost && (
+                        <Button size="sm" variant="secondary" disabled={rendering} onClick={nextBrandPhoto}>Use a brand photo</Button>
+                      )}
+                      {!isProductPost && (
+                        <Button size="sm" variant="secondary" disabled={rendering} onClick={() => renderPreview(post, { photo: "generate" })}>New AI photo</Button>
+                      )}
+                      {rendering && <span className="text-xs text-text-muted">Laying out your post…</span>}
+                    </div>
+                    {post.imagePrompt && (
+                      <details className="text-xs text-text-muted">
+                        <summary className="cursor-pointer">Photo brief</summary>
+                        <p className="mt-2 leading-relaxed">{post.imagePrompt}</p>
+                      </details>
+                    )}
+                  </EditSection>
+
+                  <EditSection title="Headline" defaultOpen>
+                    <Input label="Headline on the image" value={post.headline ?? ""} onChange={(e) => editVisualText("headline", e.target.value)} />
+                  </EditSection>
+
+                  <EditSection title="Supporting line" shown={show.subline} onToggle={(v) => toggleShow("subline", v)}>
+                    <Input label="Supporting line" value={post.subline ?? ""} onChange={(e) => editVisualText("subline", e.target.value)} />
+                  </EditSection>
+
+                  <EditSection title="Caption and hashtags">
+                    <Textarea label="Caption" value={post.caption} rows={6} onChange={(e) => setPost({ ...post, caption: e.target.value })} />
                     <div className="flex flex-wrap gap-1.5">
                       {post.hashtags.map((h) => (
                         <Chip key={h} variant="neutral" className="text-[11px]">{h}</Chip>
                       ))}
                     </div>
-                  </div>
-                  <div>
-                    <SectionLabel>Metadata</SectionLabel>
-                    <div className="space-y-2 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-text-muted">Post type</span>
-                        <span>{post.postType}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-text-muted">Best time</span>
-                        <span>{post.bestTimeToPost}</span>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-
-                {/* Branded visual */}
-                <Card className="p-5 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <SectionLabel>Visual</SectionLabel>
-                    <div className="flex gap-1" role="group" aria-label="Image size">
-                      {(["1080x1350", "1080x1080"] as const).map((sz) => (
-                        <button
-                          key={sz}
-                          aria-pressed={size === sz}
-                          onClick={() => {
-                            setSize(sz);
-                            renderPreview(post, { size: sz, photo: currentPhoto() });
-                          }}
-                          className={`text-xs px-3 py-1 rounded-full border ${size === sz ? "bg-accent/10 border-accent/40 text-accent-light" : "border-border text-text-muted hover:text-text"}`}
-                        >
-                          {sz === "1080x1350" ? "4:5" : "1:1"}
-                        </button>
+                    {selectedPlatforms.length > 1 &&
+                      selectedPlatforms.map((p) => (
+                        <div key={p}>
+                          <p className="text-xs font-semibold text-text-muted mb-1">{PLATFORM_LABELS[p]}</p>
+                          <p className="text-xs leading-relaxed bg-surface p-3 rounded-xl">{post.platformVariants?.[p] ?? post.caption}</p>
+                        </div>
                       ))}
+                    <div className="text-xs space-y-1">
+                      <div className="flex justify-between"><span className="text-text-muted">Post type</span><span>{post.postType}</span></div>
+                      <div className="flex justify-between"><span className="text-text-muted">Best time</span><span>{post.bestTimeToPost}</span></div>
                     </div>
-                  </div>
-                  {kit && !isProductPost && (
-                    <div className="flex flex-wrap gap-1.5" role="group" aria-label="Layout">
-                      {kit.layouts
-                        .filter((l) => l !== "carousel-cover" || (post.slides?.length ?? 0) >= 2)
-                        .map((l) => (
-                          <button
-                            key={l}
-                            aria-pressed={(rendered?.layout ?? post.layout) === l}
-                            onClick={() => switchLayout(l)}
-                            className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
-                              (rendered?.layout ?? post.layout) === l ? "bg-text text-bg border-text" : "border-border text-text-muted hover:text-text"
-                            }`}
-                          >
-                            {LAYOUT_LABELS[l]}
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                  <Input label="Headline on the image" value={post.headline ?? ""} onChange={(e) => editVisualText("headline", e.target.value)} />
-                  <Input label="Supporting line" value={post.subline ?? ""} onChange={(e) => editVisualText("subline", e.target.value)} />
-                  <div className="flex gap-2 flex-wrap items-center">
-                    {brandPhotos.length > 0 && !isProductPost && (
-                      <Button size="sm" variant="secondary" disabled={rendering} onClick={nextBrandPhoto}>
-                        Use a brand photo
-                      </Button>
-                    )}
-                    {!isProductPost && (
-                      <Button size="sm" variant="secondary" disabled={rendering} onClick={() => renderPreview(post, { photo: "generate" })}>
-                        New AI photo
-                      </Button>
-                    )}
-                    {rendering && <span className="text-xs text-text-muted">Laying out your post…</span>}
-                  </div>
-                  {post.imagePrompt && (
-                    <details className="text-xs text-text-muted">
-                      <summary className="cursor-pointer">Photo brief</summary>
-                      <p className="mt-2 leading-relaxed">{post.imagePrompt}</p>
-                    </details>
-                  )}
-                  {renderError && <p className="text-xs text-error">{renderError}</p>}
-                </Card>
+                  </EditSection>
 
-                {/* Schedule */}
-                <Card className="p-5">
-                  <SectionLabel>Schedule or Save</SectionLabel>
-                  <div className="flex gap-3 items-end flex-wrap">
-                    <div className="flex-1 min-w-[180px]">
-                      <label className="block text-xs text-text-muted mb-1.5">Schedule Date & Time</label>
+                  <EditSection title="Call to action" shown={show.cta} onToggle={(v) => toggleShow("cta", v)} />
+                  <EditSection title="Logo" shown={show.logo} onToggle={(v) => toggleShow("logo", v)} />
+
+                  {post.check && (
+                    <EditSection title="Check">
+                      <Scorecard check={post.check} text={[post.headline, post.caption].filter(Boolean).join("\n")} />
+                    </EditSection>
+                  )}
+
+                  <EditSection title="Schedule or save" defaultOpen>
+                    <div>
+                      <label className="block text-xs text-text-muted mb-1.5">Schedule Date &amp; Time</label>
                       <input
                         type="datetime-local"
                         value={scheduleDate}
@@ -567,71 +609,15 @@ export default function ComposerPage() {
                       />
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="ghost" onClick={() => schedulePost("draft")} disabled={saved || saving}>
-                        Save Draft
-                      </Button>
-                      <Button onClick={() => schedulePost("scheduled")} disabled={saved || saving} loading={saving}>
-                        {saved ? "✓ Scheduled!" : "📅 Schedule Post"}
-                      </Button>
+                      <Button variant="ghost" onClick={() => schedulePost("draft")} disabled={saved || saving}>Save Draft</Button>
+                      <Button onClick={() => schedulePost("scheduled")} disabled={saved || saving} loading={saving}>{saved ? "Scheduled" : "Schedule Post"}</Button>
                     </div>
-                  </div>
-                </Card>
-
-                {/* Feedback */}
-                {generationId && (
-                  <Card className="p-5">
-                    {feedbackSent ? (
-                      <p className="text-sm text-text-muted">Thanks. This helps Brandly write better posts for you.</p>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm flex-1">Is this post on-brand?</span>
-                          <Button size="sm" variant={rating === 1 ? "primary" : "secondary"} aria-pressed={rating === 1} onClick={() => {
-                            setRating(1);
-                            sendFeedback({ generationId, rating: 1 }).then(() => setFeedbackSent(true)).catch(() => undefined);
-                          }}>
-                            Yes
-                          </Button>
-                          <Button size="sm" variant={rating === -1 ? "primary" : "secondary"} aria-pressed={rating === -1} onClick={() => setRating(-1)}>
-                            Not quite
-                          </Button>
-                        </div>
-                        {rating === -1 && (
-                          <div className="mt-4 space-y-3">
-                            <div className="flex flex-wrap gap-1.5">
-                              {BAD_REASONS.map((r) => (
-                                <button
-                                  key={r}
-                                  aria-pressed={reasons.includes(r)}
-                                  onClick={() => setReasons((x) => (x.includes(r) ? x.filter((y) => y !== r) : [...x, r]))}
-                                  className={`text-xs px-3 py-1.5 rounded-full border ${reasons.includes(r) ? "bg-text text-bg border-text" : "border-border text-text-muted hover:text-text"}`}
-                                >
-                                  {r}
-                                </button>
-                              ))}
-                            </div>
-                            <Button size="sm" onClick={() => sendFeedback({ generationId, rating: -1, reasons }).then(() => setFeedbackSent(true)).catch(() => undefined)}>
-                              Send
-                            </Button>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </Card>
-                )}
-
-                {isProductPost && batch + 1 < batches.length && (
-                  <Button variant="secondary" className="w-full" onClick={nextCarousel}>
-                    Next carousel ({batch + 2} of {batches.length}) →
-                  </Button>
-                )}
-                <Button variant="ghost" className="w-full" onClick={() => generate()}>
-                  ↺ Regenerate
-                </Button>
-              </>
-            )}
+                  </EditSection>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </AppShell>
   );

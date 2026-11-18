@@ -6,6 +6,7 @@ import { errorResponse, requireSession } from "@/lib/db/session";
 import { layoutKitOf } from "@/lib/render/kit";
 import { encodeForUpload, generatePhoto, loadSlidePhotos, loadVisuals, resolvePhoto, storeRendered, type PhotoRef } from "@/lib/render/media";
 import { renderPost, type RenderSize } from "@/lib/render/render";
+import { cleanShow, type ShowFlags } from "@/lib/render/show";
 import type { GeneratedPost, RenderedMedia } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -23,6 +24,8 @@ interface Body {
   store?: boolean;
   /** Folder name for stored images (usually the post id). */
   key?: string;
+  /** Hide the logo, call to action or supporting line (all shown by default). */
+  show?: ShowFlags;
 }
 
 // Renders the post as the brand's own branded image(s): its fonts, colours, logo and layout kit.
@@ -34,6 +37,7 @@ export async function POST(req: NextRequest) {
     const size: RenderSize = b.size === "1080x1080" ? "1080x1080" : "1080x1350";
     const session = await requireSession();
 
+    const show = cleanShow(b.show);
     const kit = layoutKitOf(model)!;
     const history = await recentPosts(model.id, 15, session);
     const wanted = b.layout ?? b.post.layout;
@@ -54,17 +58,17 @@ export async function POST(req: NextRequest) {
     const visuals = await loadVisuals(session, model, photo);
     const slidePhotos = isProduct ? await loadSlidePhotos(session, model, (b.post.slides ?? []).map((s) => s.photoPath)) : undefined;
     const photos = slidePhotos?.filter((x): x is string => !!x).slice(0, 4);
-    const pngs = await renderPost({ model, post: b.post, layout, size, logo: visuals.logo, logoTone: visuals.logoTone, photo: visuals.photo, photos, slidePhotos });
+    const pngs = await renderPost({ model, post: b.post, layout, size, logo: visuals.logo, logoTone: visuals.logoTone, photo: visuals.photo, photos, slidePhotos, show });
 
     let rendered: RenderedMedia;
     if (b.store) {
       const key = (b.key ?? crypto.randomUUID()).replace(/[^\w-]/g, "").slice(0, 64) || crypto.randomUUID();
       const encoded = await Promise.all(pngs.map((p) => encodeForUpload(p)));
       const { paths, urls } = await storeRendered(session, model.id, key, encoded);
-      rendered = { layout, paths, urls, size, photo };
+      rendered = { layout, paths, urls, size, photo, show };
     } else {
       const previews = await Promise.all(pngs.map((p) => encodeForUpload(p, 80)));
-      rendered = { layout, paths: [], urls: previews.map((x) => `data:${x.mime};base64,${x.buf.toString("base64")}`), size, photo };
+      rendered = { layout, paths: [], urls: previews.map((x) => `data:${x.mime};base64,${x.buf.toString("base64")}`), size, photo, show };
     }
     return NextResponse.json({ rendered, layouts: kit.layouts, photoError });
   } catch (err) {

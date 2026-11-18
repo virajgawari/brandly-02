@@ -14,6 +14,8 @@ export type VersionSource = "user" | "stage" | "build";
 export interface Account {
   user: { id: string; email?: string; name: string | null };
   workspace: { id: string; name: string; plan: string; data_training_opt_in: boolean };
+  /** The user's role in this workspace (owner, admin, editor, viewer). */
+  role?: string | null;
 }
 
 interface AppState {
@@ -109,7 +111,7 @@ export const useStore = create<AppState>()(
           set({
             hydrated: true,
             loadError: null,
-            account: { user: data.user, workspace: data.workspace },
+            account: { user: data.user, workspace: data.workspace, role: data.role },
             brands,
             posts: data.posts,
             automationRules: data.rules,

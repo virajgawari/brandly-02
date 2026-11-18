@@ -25,6 +25,11 @@ export interface BrandDNA {
 export interface BrandSources {
   website?: string;
   instagram?: string;
+  facebook?: string;
+  linkedin?: string;
+  /** X (Twitter) handle, without the @. */
+  x?: string;
+  googleBusiness?: string;
   pdfName?: string;
   pdfPages?: number;
 }
@@ -71,6 +76,8 @@ export interface RenderedMedia {
   size: "1080x1350" | "1080x1080";
   /** The photo used inside the layout (brand photo path or generated image URL). */
   photo?: { kind: "brand" | "generated"; ref: string };
+  /** Elements hidden on the image (all shown when absent). */
+  show?: { logo?: boolean; cta?: boolean; subline?: boolean };
 }
 
 export interface GeneratedPost {

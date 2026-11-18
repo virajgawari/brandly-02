@@ -27,15 +27,17 @@ export function CarouselSlide(p: LayoutProps) {
   const { index = 2, total = 5 } = p.slide ?? {};
   const last = index === total;
   return (
-    <Frame bg={s.bg} style={{ flexDirection: "column", padding: PAD, paddingTop: PAD * 1.4 }}>
-      <div style={{ display: "flex", fontFamily: p.fonts.heading, fontWeight: 700, fontSize: 120, lineHeight: 1, color: s.accent }}>
-        {String(index - 1).padStart(2, "0")}
-      </div>
-      <Headline p={p} color={s.fg} size={Math.min(80, Math.round(4400 / Math.max(p.headline.length, 16)) + 22)} style={{ marginTop: 40 }} />
+    <Frame bg={s.bg} style={{ flexDirection: "column", padding: PAD, paddingTop: PAD * 1.4, ...(p.noNumber ? { justifyContent: "center", paddingTop: PAD, paddingBottom: PAD * 1.6 } : {}) }}>
+      {p.noNumber ? null : (
+        <div style={{ display: "flex", fontFamily: p.fonts.heading, fontWeight: 700, fontSize: 120, lineHeight: 1, color: s.accent }}>
+          {String(index - 1).padStart(2, "0")}
+        </div>
+      )}
+      <Headline p={p} color={s.fg} size={Math.min(80, Math.round(4400 / Math.max(p.headline.length, 16)) + 22)} style={{ marginTop: p.noNumber ? 0 : 40 }} />
       <Subline p={p} color={s.muted} size={36} />
       {last && p.cta ? (
-        <div style={{ display: "flex", alignSelf: "flex-start", marginTop: 48, padding: "18px 34px", background: s.accent, color: s.onAccent, fontFamily: p.fonts.body, fontWeight: 700, fontSize: 30, borderRadius: Math.min(p.kit.radius * 2, 40) }}>
-          {p.cta.length > 42 ? p.cta.slice(0, 40).replace(/\s+\S*$/, "") + "…" : p.cta}
+        <div style={{ display: "flex", alignSelf: "flex-start", marginTop: 48, padding: "18px 34px", background: s.accent, color: s.onAccent, fontFamily: p.fonts.body, fontWeight: 700, fontSize: 30, borderRadius: Math.min(p.kit.radius * 2, 40), ...(p.noNumber ? { maxWidth: p.width - PAD * 2 } : {}) }}>
+          {p.noNumber ? p.cta.slice(0, 90) : p.cta.length > 42 ? p.cta.slice(0, 40).replace(/\s+\S*$/, "") + "…" : p.cta}
         </div>
       ) : null}
       <div style={{ display: "flex", position: "absolute", bottom: PAD * 0.8, right: PAD }}>

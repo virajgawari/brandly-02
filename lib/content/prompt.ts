@@ -4,7 +4,7 @@ import type { BrandModel } from "@/lib/brand/model";
 import { toPromptContext } from "@/lib/brand/projection";
 import { GeneratedPostSchema } from "@/lib/brand/schemas";
 import { CONTENT_TEMPLATES, PLATFORM_LIMITS } from "@/lib/templates";
-import type { BrandDNA, GeneratedPost, Platform, TemplateCategory } from "@/lib/types";
+import type { BrandDNA, CarouselSlide, GeneratedPost, Platform, ProductRef, TemplateCategory } from "@/lib/types";
 import { AI_CLICHES, briefBlock, type PostBrief } from "./brief";
 import { historyBlock, type ContentHistory } from "./history";
 import { imagePromptFromBrief } from "./visual";
@@ -104,6 +104,23 @@ export function postSchemaFor(model?: BrandModel) {
   });
 }
 
+/**
+ * Product carousel: always cover + one slide per product + CTA. The model's order is never trusted:
+ * product names and photos come from the request, and its text is used only when it lines up.
+ */
+export function productSlides(products: ProductRef[], written: CarouselSlide[], headline: string, cta: string): CarouselSlide[] {
+  const full = written.length === products.length + 2;
+  return [
+    { headline: written[0]?.headline?.trim() || headline },
+    ...products.map((p, i) => ({
+      headline: p.name,
+      body: (full ? written[i + 1]?.body?.trim() : "") || p.note || "",
+      photoPath: p.path,
+    })),
+    { headline: (full ? written[products.length + 1]?.headline?.trim() : "") || cta || "See the range" },
+  ];
+}
+
 /** Normalises a model reply (validated or raw from n8n) into a GeneratedPost with brief metadata attached. */
 export function finalizePost(raw: unknown, r: Pick<PostRequest, "model" | "dna" | "brief" | "platforms">): GeneratedPost | null {
   const parsed = GeneratedPostSchema.safeParse(raw);
@@ -115,10 +132,12 @@ export function finalizePost(raw: unknown, r: Pick<PostRequest, "model" | "dna" 
   const vb = visualBrief ? { ...visualBrief, usesProductPhoto } : undefined;
   const headline = p?.headline ?? loose.headline ?? loose.caption!.split(/[.!?\n]/)[0].split(/\s+/).slice(0, 8).join(" ");
   const variants = (p?.platformVariants ?? loose.platformVariants ?? {}) as Record<string, string>;
+  const cta = p?.cta ?? loose.cta ?? "";
+  const written = p?.slides ?? loose.slides ?? [];
   return {
     caption: p?.caption ?? loose.caption!,
     hashtags: p?.hashtags ?? (loose.hashtags ?? []).slice(0, 10),
-    cta: p?.cta ?? loose.cta ?? "",
+    cta,
     bestTimeToPost: p?.bestTimeToPost || loose.bestTimeToPost || "",
     postType: r.brief.carousel ? "Carousel" : p?.postType || loose.postType || "Single image",
     platformVariants: Object.fromEntries(Object.entries(variants).filter(([k]) => (r.platforms as string[]).includes(k))),
@@ -130,7 +149,7 @@ export function finalizePost(raw: unknown, r: Pick<PostRequest, "model" | "dna" 
     subline: p?.subline ?? loose.subline ?? "",
     items: p?.items ?? loose.items ?? [],
     stat: p?.stat ?? loose.stat ?? "",
-    slides: r.brief.carousel ? p?.slides ?? loose.slides ?? [] : [],
+    slides: r.brief.products?.length ? productSlides(r.brief.products, written, headline, cta) : r.brief.carousel ? written : [],
     visualBrief: vb,
   };
 }

@@ -3,11 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import clsx from "clsx";
-import { Check, FileUp, RefreshCw, Sprout, Store, X } from "lucide-react";
+import { Check, FileUp, RefreshCw, X } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
 import { Button, Input, Select, Textarea } from "@/components/ui";
 import { BUSINESS_MODELS, INDUSTRIES, PRIMARY_GOALS, type BusinessModel, type Industry, type PrimaryGoal } from "@/lib/brand/taxonomy";
-import { ChipGroup, ChoiceCard, LiveFindings, OnboardingShell, Question, TierCards } from "@/components/onboarding/kit";
+import { BrandAssets, productsToPhotos, type LogoAsset, type ProductAsset } from "@/components/onboarding/BrandAssets";
+import { ChipGroup, LiveFindings, OnboardingShell, Question, TierCards } from "@/components/onboarding/kit";
+import { brandNameFromTitle, nameFromUrl } from "@/lib/brand/naming";
 import { BrandPostPreview, PaletteStrip } from "@/components/brand/BrandPreview";
 import { afterSync, useStore } from "@/lib/store";
 import { track } from "@/lib/track";
@@ -21,10 +23,13 @@ import type { Finding } from "@/lib/brand/stages/types";
 import type { Direction } from "@/lib/brand/stages/directions";
 
 type Door = "analyse" | "build" | "refine";
-type Step = "start" | "sources" | "reading" | "basics" | "audience" | "why" | "personality" | "directions" | "finishing";
+type Step =
+  | "website" | "instagram" | "files" | "assets" | "name" | "reading" | "confirm"
+  | "offering" | "business" | "markets"
+  | "audience" | "why" | "personality" | "directions" | "finishing";
 
-const BUILD_STEPS: Step[] = ["basics", "audience", "why", "personality", "directions"];
-const REFINE_STEPS: Step[] = ["sources", "audience", "why", "personality", "directions"];
+const INTERVIEW: Step[] = ["audience", "why", "personality", "directions"];
+const BUILD_STEPS: Step[] = ["name", "offering", "business", "markets", ...INTERVIEW, "assets"];
 
 interface Answers {
   offering: string;
@@ -62,8 +67,8 @@ export default function OnboardingPage() {
   const router = useRouter();
   const saveBrandModel = useStore((s) => s.saveBrandModel);
 
-  const [step, setStep] = useState<Step>("start");
-  const [door, setDoor] = useState<Door | null>(null);
+  const [step, setStep] = useState<Step>("website");
+  const [door, setDoor] = useState<Door>("analyse");
   const [name, setName] = useState("");
 
   // Door A sources
@@ -71,11 +76,17 @@ export default function OnboardingPage() {
   const [igHandle, setIgHandle] = useState("");
   const [files, setFiles] = useState<File[]>([]);
 
+  // Uploaded before the brand exists, so the brand id is fixed up front.
+  const [draftId] = useState(() => crypto.randomUUID());
+  const [logo, setLogo] = useState<LogoAsset | null>(null);
+  const [products, setProducts] = useState<ProductAsset[]>([]);
+
   // Running state
   const [findings, setFindings] = useState<Finding[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [model, setModel] = useState<BrandModel | null>(null);
+  const [confirmName, setConfirmName] = useState("");
 
   // Door B answers + directions
   const [answers, setAnswers] = useState<Answers>(EMPTY_ANSWERS);
@@ -92,8 +103,33 @@ export default function OnboardingPage() {
 
   const set = <K extends keyof Answers>(k: K, v: Answers[K]) => setAnswers((a) => ({ ...a, [k]: v }));
 
-  const flow = door === "build" ? BUILD_STEPS : door === "refine" ? REFINE_STEPS : [];
+  // The steps this person will see. Without a website there is no title to read the name from, so we ask for it.
+  const hasSite = !!websiteUrl.trim();
+  const flow: Step[] =
+    door === "build"
+      ? BUILD_STEPS
+      : [
+          "website", "instagram", "files", "assets",
+          ...(hasSite ? [] : (["name"] as Step[])),
+          ...(door === "refine" ? INTERVIEW : []),
+        ];
   const stepNo = flow.indexOf(step) + 1 || undefined;
+  const goBack = (): (() => void) | undefined => {
+    if (step === "audience" && door === "refine") return () => setStep("confirm");
+    const i = flow.indexOf(step);
+    if (i > 0) return () => setStep(flow[i - 1]);
+    return step === "name" ? () => setStep("website") : undefined;
+  };
+  // Puts the uploaded logo and products on a model (keeps what is already there).
+  const withAssets = useCallback(
+    (m: BrandModel): BrandModel => {
+      const have = m.expression.photos ?? [];
+      const photos = [...have, ...productsToPhotos(products).filter((p) => !have.some((h) => h.path === p.path))];
+      return { ...m, expression: { ...m.expression, ...(logo ? { logoPath: logo.path } : {}), photos } };
+    },
+    [logo, products]
+  );
+  const runName = name.trim() || nameFromUrl(websiteUrl);
 
   // ── Dropzone (PDF or screenshots) ────────────────────────────────────────
   const onDrop = useCallback((accepted: File[]) => setFiles((f) => [...f, ...accepted].slice(0, 9)), []);
@@ -125,57 +161,68 @@ export default function OnboardingPage() {
         images = [...images, ...(await Promise.all(pics.slice(0, 8 - images.length).map((f) => imageFileToBase64(f))))];
         if (!pdf) imageSource = igHandle ? "instagram" : "upload";
       }
-      const base = emptyModel(name.trim(), door === "refine" ? "refine" : "analyse");
+      const base = emptyModel(runName, door === "refine" ? "refine" : "analyse", draftId);
+      if (logo) base.expression = { ...base.expression, logoPath: logo.path };
       const result = await runPipeline(
         "analyse",
         base,
-        { websiteUrl: websiteUrl.trim() || undefined, igHandle: igHandle.trim() || undefined, images, imageSource },
+        { websiteUrl: websiteUrl.trim() || undefined, igHandle: igHandle.trim() || undefined, images, imageSource, ...(logo ? { logoImage: logo.dataUri } : {}) },
         setFindings,
         controller.signal
       );
       setFindings(result.findings);
-      setModel(result.model);
+      setModel(withAssets(result.model));
       setRunning(false);
-      if (door === "refine") {
-        // Prefill the interview with what we found, then continue the Build path.
-        const a = result.model.strategy.audience;
-        setAnswers((prev) => ({
-          ...prev,
-          offering: result.model.strategy.offering,
-          category: result.model.strategy.category,
-          industry: result.model.strategy.industry,
-          businessModel: result.model.strategy.businessModel,
-          primaryGoal: result.model.strategy.primaryGoal,
-          gender: a.gender ? [a.gender] : [],
-          ageGroups: a.ageGroups,
-          affluence: a.affluence,
-          languages: a.languages.length ? a.languages : prev.languages,
-          cityTiers: a.markets.cityTiers,
-          motivations: a.motivations,
-          moments: a.moments,
-        }));
-        setStep("audience");
-      } else {
-        saveBrandModel(
-          result.model,
-          {
-            website: websiteUrl.trim() || undefined,
-            instagram: igHandle.trim() || undefined,
-            pdfName: pdf?.name,
-          },
-          { source: "stage", stageId: "pipeline:analyse" }
-        );
-        router.push("/brand?welcome=1");
-      }
+      // The name comes from the site's title; the owner confirms it on the next screen.
+      const title = result.findings.find((f) => f.id === "site")?.detail;
+      setConfirmName(name.trim() || (hasSite ? brandNameFromTitle(title, websiteUrl) : runName));
+      setStep("confirm");
     } catch (err) {
       setRunning(false);
       setError(err instanceof Error ? err.message : String(err));
     }
   };
 
+  // After the owner confirms the name: save the brand (analyse) or carry on to the interview (refine).
+  const finishReading = () => {
+    if (!model) return;
+    const finalName = confirmName.trim() || runName;
+    const confirmed: BrandModel = { ...model, name: finalName };
+    setName(finalName);
+    setModel(confirmed);
+    if (door === "refine") {
+      // Prefill the interview with what we found, then continue the Build path.
+      const a = confirmed.strategy.audience;
+      setAnswers((prev) => ({
+        ...prev,
+        offering: confirmed.strategy.offering,
+        category: confirmed.strategy.category,
+        industry: confirmed.strategy.industry,
+        businessModel: confirmed.strategy.businessModel,
+        primaryGoal: confirmed.strategy.primaryGoal,
+        gender: a.gender ? [a.gender] : [],
+        ageGroups: a.ageGroups,
+        affluence: a.affluence,
+        languages: a.languages.length ? a.languages : prev.languages,
+        cityTiers: a.markets.cityTiers,
+        motivations: a.motivations,
+        moments: a.moments,
+      }));
+      setStep("audience");
+      return;
+    }
+    const pdf = files.find((f) => f.type === "application/pdf");
+    saveBrandModel(
+      confirmed,
+      { website: websiteUrl.trim() || undefined, instagram: igHandle.trim() || undefined, pdfName: pdf?.name },
+      { source: "stage", stageId: "pipeline:analyse" }
+    );
+    router.push("/brand?welcome=1");
+  };
+
   // ── Door B: answers → model ─────────────────────────────────────────────
   const modelFromAnswers = useCallback((): BrandModel => {
-    const base = model ?? emptyModel(name.trim(), door === "refine" ? "refine" : "build");
+    const base = model ?? emptyModel(name.trim(), door === "refine" ? "refine" : "build", draftId);
     const countries = answers.countries.split(",").map((c) => c.trim()).filter(Boolean);
     return mergePatch(
       base,
@@ -202,7 +249,7 @@ export default function OnboardingPage() {
       },
       { source: "user", confidence: 1 }
     ).model;
-  }, [answers, door, model, name]);
+  }, [answers, door, model, name, draftId]);
 
   const designDirections = async (nextSeed = seed) => {
     setError(null);
@@ -230,7 +277,7 @@ export default function OnboardingPage() {
     try {
       const withAnswers = modelFromAnswers();
       const chosen = mergePatch(withAnswers, directionToPatch(d), { source: "user", confidence: 1 }).model;
-      const result = await runPipeline("build", chosen, {}, setFindings);
+      const result = await runPipeline("build", door === "build" ? withAssets(chosen) : chosen, {}, setFindings);
       saveBrandModel(result.model, door === "refine" ? { website: websiteUrl.trim() || undefined, instagram: igHandle.trim() || undefined } : {}, { source: "build" });
       // Every direction shown + the one picked: preference data for improving directions later.
       const brandId = result.model.id;
@@ -249,105 +296,143 @@ export default function OnboardingPage() {
     }
   };
 
-  const canRead = name.trim() && (websiteUrl.trim() || igHandle.trim() || files.length);
+  const canRead = !!(hasSite || igHandle.trim() || files.length);
   const personalityAnswered = useMemo(() => Object.values(answers.personality).filter(Boolean).length, [answers.personality]);
 
   // ── Screens ──────────────────────────────────────────────────────────────
   return (
     <AppShell>
-      {step === "start" && (
+      {step === "website" && (
         <OnboardingShell
-          title="Set up your brand"
-          subtitle="Brandly learns your brand once, so every post it writes sounds and looks like you."
-          primary={{
-            label: "Continue",
-            disabled: !name.trim() || !door,
-            onClick: () => setStep(door === "build" ? "basics" : "sources"),
-          }}
+          hero
+          title="What's your website?"
+          subtitle="Brandly reads it to learn your colours, fonts, logo and how you write."
+          primary={{ label: "Continue", onClick: () => setStep("instagram"), disabled: !hasSite }}
         >
-          <Input label="Brand name" placeholder="e.g. Chai Point" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-          <div className="mt-8 space-y-3">
-            <p className="text-sm font-medium">Where are you starting from?</p>
-            <ChoiceCard
-              icon={<Store size={20} strokeWidth={1.75} />}
-              title="I have a website or Instagram"
-              description="Brandly reads what you already have: colours, fonts, logo and how you write."
-              selected={door === "analyse"}
-              onClick={() => setDoor("analyse")}
-            />
-            <ChoiceCard
-              icon={<Sprout size={20} strokeWidth={1.75} />}
-              title="I'm starting from scratch"
-              description="Answer a few quick questions and pick from three brand directions."
-              selected={door === "build"}
-              onClick={() => setDoor("build")}
-            />
+          <Input
+            aria-label="Website"
+            className="h-14 text-base text-center"
+            placeholder="yourbrand.com"
+            value={websiteUrl}
+            onChange={(e) => setWebsiteUrl(e.target.value)}
+            inputMode="url"
+            autoFocus
+          />
+          <div className="mt-6 flex flex-col items-center gap-2 text-sm text-text-muted">
             <button
-              onClick={() => setDoor("refine")}
+              onClick={() => setDoor(door === "refine" ? "analyse" : "refine")}
               aria-pressed={door === "refine"}
-              className={clsx(
-                "text-sm underline-offset-4 hover:underline pt-1",
-                door === "refine" ? "text-text font-medium" : "text-text-muted"
-              )}
+              className={clsx("underline-offset-4 hover:underline", door === "refine" && "text-text font-medium")}
             >
               {door === "refine" && <Check size={14} className="inline mr-1 -mt-0.5" />}I have a website, but no real brand yet
+            </button>
+            <button onClick={() => { setWebsiteUrl(""); setDoor("analyse"); setStep("instagram"); }} className="underline-offset-4 hover:underline">
+              No website? Use Instagram or files
+            </button>
+            <button onClick={() => { setDoor("build"); setStep("name"); }} className="underline-offset-4 hover:underline">
+              I&apos;m starting from scratch
             </button>
           </div>
         </OnboardingShell>
       )}
 
-      {step === "sources" && (
+      {step === "instagram" && (
         <OnboardingShell
           step={stepNo}
-          total={flow.length || undefined}
-          title={door === "refine" ? "Show us what you have" : "Where can we find your brand?"}
-          subtitle="Add at least one. The more you add, the better the match."
-          onBack={() => setStep("start")}
-          primary={{ label: "Read my brand", onClick: readBrand, disabled: !canRead }}
+          total={flow.length}
+          title="Got an Instagram?"
+          subtitle="Optional. We note your handle; screenshots on the next step let us study your posts."
+          onBack={goBack()}
+          primary={{ label: "Continue", onClick: () => setStep("files") }}
+          secondary={{ label: "Skip", onClick: () => setStep("files") }}
         >
-          <div className="space-y-5">
-            <Input label="Website" placeholder="yourbrand.com" value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} inputMode="url" />
-            <Input label="Instagram handle" placeholder="yourbrand" prefix="@" value={igHandle} onChange={(e) => setIgHandle(e.target.value.replace(/^@/, ""))} />
-            <div>
-              <p className="text-sm font-medium mb-1.5">Catalogue PDF or post screenshots</p>
-              <p className="text-xs text-text-muted mb-2">
-                Instagram doesn&apos;t let apps read posts directly, so 4–6 screenshots of your grid help a lot.
-              </p>
-              <div
-                {...getRootProps()}
-                className={clsx(
-                  "rounded-xl border border-dashed p-6 text-center cursor-pointer transition-colors",
-                  isDragActive ? "border-text bg-text/[0.03]" : "border-border hover:border-text/30"
-                )}
-              >
-                <input {...getInputProps()} />
-                <FileUp size={20} className="mx-auto text-text-muted" />
-                <p className="text-sm mt-2">Drop files here or click to choose</p>
-                <p className="text-xs text-text-muted mt-0.5">PDF, PNG or JPG. Up to 9 files.</p>
-              </div>
-              {files.length > 0 && (
-                <ul className="mt-3 space-y-1.5">
-                  {files.map((f, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm bg-card border border-border rounded-lg px-3 h-9">
-                      <span className="truncate flex-1">{f.name}</span>
-                      <span className="text-xs text-text-muted">{(f.size / 1024).toFixed(0)} KB</span>
-                      <button onClick={() => setFiles((fs) => fs.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`} className="text-text-muted hover:text-text">
-                        <X size={14} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          <Input label="Instagram handle" placeholder="yourbrand" prefix="@" value={igHandle} onChange={(e) => setIgHandle(e.target.value.replace(/^@/, ""))} autoFocus />
+        </OnboardingShell>
+      )}
+
+      {step === "files" && (
+        <OnboardingShell
+          step={stepNo}
+          total={flow.length}
+          title="Add a catalogue or post screenshots?"
+          subtitle={hasSite ? "Optional. 4–6 screenshots of your grid help a lot." : "Add at least one file, or go back and add a website or handle."}
+          onBack={goBack()}
+          primary={{ label: "Continue", onClick: () => setStep("assets"), disabled: !canRead }}
+          secondary={hasSite && !files.length ? { label: "Skip", onClick: () => setStep("assets") } : undefined}
+        >
+          <div
+            {...getRootProps()}
+            className={clsx(
+              "rounded-xl border border-dashed p-8 text-center cursor-pointer transition-colors",
+              isDragActive ? "border-text bg-text/[0.03]" : "border-border hover:border-text/30"
+            )}
+          >
+            <input {...getInputProps()} />
+            <FileUp size={20} className="mx-auto text-text-muted" />
+            <p className="text-sm mt-2">Drop files here or click to choose</p>
+            <p className="text-xs text-text-muted mt-0.5">PDF, PNG or JPG. Up to 9 files.</p>
           </div>
+          {files.length > 0 && (
+            <ul className="mt-3 space-y-1.5">
+              {files.map((f, i) => (
+                <li key={i} className="flex items-center gap-2 text-sm bg-card border border-border rounded-lg px-3 h-9">
+                  <span className="truncate flex-1">{f.name}</span>
+                  <span className="text-xs text-text-muted">{(f.size / 1024).toFixed(0)} KB</span>
+                  <button onClick={() => setFiles((fs) => fs.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`} className="text-text-muted hover:text-text">
+                    <X size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </OnboardingShell>
+      )}
+
+      {step === "assets" && (
+        <OnboardingShell
+          step={stepNo}
+          total={flow.length}
+          title="Add your logo and products"
+          subtitle="Optional. Your logo sets the starting colours, and product photos are used in posts instead of AI images."
+          onBack={goBack()}
+          primary={
+            door === "build"
+              ? { label: "Set up my brand", onClick: finishBuild }
+              : hasSite
+                ? { label: "Read my brand", onClick: readBrand }
+                : { label: "Continue", onClick: () => setStep("name") }
+          }
+          secondary={
+            logo || products.length
+              ? undefined
+              : { label: "Skip", onClick: door === "build" ? finishBuild : hasSite ? readBrand : () => setStep("name") }
+          }
+        >
+          <BrandAssets brandId={draftId} logo={logo} onLogo={setLogo} products={products} onProducts={setProducts} />
+        </OnboardingShell>
+      )}
+
+      {step === "name" && (
+        <OnboardingShell
+          step={stepNo}
+          total={flow.length}
+          title="What's your brand called?"
+          onBack={goBack()}
+          primary={
+            door === "build"
+              ? { label: "Continue", onClick: () => setStep("offering"), disabled: !name.trim() }
+              : { label: "Read my brand", onClick: readBrand, disabled: !name.trim() || !canRead }
+          }
+        >
+          <Input aria-label="Brand name" placeholder="e.g. Chai Point" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         </OnboardingShell>
       )}
 
       {step === "reading" && (
         <OnboardingShell
-          title={running ? `Reading ${name}` : error ? "That didn't work" : "Done"}
+          title={running ? `Reading ${runName || "your brand"}` : error ? "That didn't work" : "Done"}
           subtitle={running ? "This takes about 20–40 seconds. Here's what we've found so far." : undefined}
-          onBack={running ? undefined : () => setStep("sources")}
+          onBack={running ? undefined : () => setStep(hasSite ? "assets" : "name")}
           primary={error ? { label: "Try again", onClick: readBrand } : undefined}
         >
           <LiveFindings findings={findings} running={running} />
@@ -355,17 +440,50 @@ export default function OnboardingPage() {
         </OnboardingShell>
       )}
 
-      {step === "basics" && (
+      {step === "confirm" && (
+        <OnboardingShell
+          title="Is this your brand?"
+          subtitle="Here's what we found. You can change anything later."
+          primary={{ label: "Looks right", onClick: finishReading, disabled: !confirmName.trim() }}
+        >
+          <Input label="Brand name" value={confirmName} onChange={(e) => setConfirmName(e.target.value)} autoFocus />
+          {model && (
+            <div className="mt-6 space-y-3">
+              {model.expression.logoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={model.expression.logoUrl} alt="Your logo" className="h-12 w-auto max-w-[200px] object-contain" />
+              )}
+              <PaletteStrip
+                palette={{
+                  primary: model.expression.tokens.color.primary.$value,
+                  secondary: model.expression.tokens.color.secondary.$value,
+                  accent: model.expression.tokens.color.accent.$value,
+                  neutral: model.expression.tokens.color.neutral.$value,
+                }}
+              />
+              {model.identity.oneLiner && <p className="text-sm text-text-muted">{model.identity.oneLiner}</p>}
+            </div>
+          )}
+        </OnboardingShell>
+      )}
+
+      {step === "offering" && (
+        <OnboardingShell step={stepNo} total={flow.length} title="What do you sell?" onBack={goBack()} primary={{ label: "Continue", onClick: () => setStep("business"), disabled: !answers.offering.trim() }}>
+          <Question title="In plain words" hint="e.g. “Handmade soy candles and gift boxes”">
+            <Textarea rows={3} value={answers.offering} onChange={(e) => set("offering", e.target.value)} placeholder="We sell…" autoFocus />
+          </Question>
+        </OnboardingShell>
+      )}
+
+      {step === "business" && (
         <OnboardingShell
           step={stepNo}
           total={flow.length}
-          title="What do you sell, and where?"
-          onBack={() => setStep("start")}
-          primary={{ label: "Continue", onClick: () => setStep("audience"), disabled: !answers.offering.trim() }}
+          title="How does your business work?"
+          onBack={goBack()}
+          primary={{ label: "Continue", onClick: () => setStep("markets") }}
+          secondary={{ label: "Skip", onClick: () => setStep("markets") }}
         >
-          <Question title="What do you sell?" hint="Plain words are best. e.g. “Handmade soy candles and gift boxes”">
-            <Textarea rows={2} value={answers.offering} onChange={(e) => set("offering", e.target.value)} placeholder="We sell…" />
-          </Question>
           <Question title="Which industry fits best?">
             <Select options={INDUSTRIES} value={answers.industry ?? ""} onChange={(v) => set("industry", (v || undefined) as Industry | undefined)} />
           </Question>
@@ -375,6 +493,18 @@ export default function OnboardingPage() {
           <Question title="What do you want social media to do for you most?">
             <Select options={PRIMARY_GOALS} value={answers.primaryGoal ?? ""} onChange={(v) => set("primaryGoal", (v || undefined) as PrimaryGoal | undefined)} />
           </Question>
+        </OnboardingShell>
+      )}
+
+      {step === "markets" && (
+        <OnboardingShell
+          step={stepNo}
+          total={flow.length}
+          title="Where are your customers?"
+          onBack={goBack()}
+          primary={{ label: "Continue", onClick: () => setStep("audience") }}
+          secondary={{ label: "Skip", onClick: () => setStep("audience") }}
+        >
           <Question title="Which country or countries?">
             <Input value={answers.countries} onChange={(e) => set("countries", e.target.value)} placeholder="India" />
           </Question>
@@ -398,7 +528,7 @@ export default function OnboardingPage() {
           total={flow.length}
           title="Who buys from you?"
           subtitle={door === "refine" ? "We guessed from your website. Fix anything that's off." : "This shapes your colours, voice and where you post."}
-          onBack={() => setStep(door === "build" ? "basics" : "sources")}
+          onBack={goBack()}
           primary={{ label: "Continue", onClick: () => setStep("why") }}
           secondary={{ label: "Not sure, let Brandly suggest", onClick: () => setStep("why") }}
         >
@@ -419,7 +549,7 @@ export default function OnboardingPage() {
           step={stepNo}
           total={flow.length}
           title="Why and when do people buy?"
-          onBack={() => setStep("audience")}
+          onBack={goBack()}
           primary={{ label: "Continue", onClick: () => setStep("personality") }}
           secondary={{ label: "Not sure, let Brandly suggest", onClick: () => setStep("personality") }}
         >
@@ -483,7 +613,7 @@ export default function OnboardingPage() {
           title="Pick a starting direction"
           subtitle="You can change colours, fonts and voice afterwards."
           onBack={() => setStep("personality")}
-          primary={directions ? { label: "Use this direction", onClick: finishBuild, disabled: !picked } : undefined}
+          primary={directions ? { label: "Use this direction", onClick: door === "build" ? () => setStep("assets") : finishBuild, disabled: !picked } : undefined}
           secondary={
             directions
               ? {
@@ -557,7 +687,7 @@ export default function OnboardingPage() {
       )}
 
       {step === "finishing" && (
-        <OnboardingShell title="Setting up your brand" subtitle="Planning what to post about and checking your colours." onBack={error ? () => setStep("directions") : undefined}>
+        <OnboardingShell title="Setting up your brand" subtitle="Planning what to post about and checking your colours." onBack={error ? () => setStep(door === "build" ? "assets" : "directions") : undefined}>
           <LiveFindings findings={findings} running={running} />
           {error && <p className="mt-4 text-sm text-error">{error}</p>}
         </OnboardingShell>

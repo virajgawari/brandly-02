@@ -57,6 +57,8 @@ export interface VisualBrief {
 export interface CarouselSlide {
   headline: string;
   body?: string;
+  /** Storage path (images bucket) of the product photo shown on this slide. */
+  photoPath?: string;
 }
 
 /** The branded image(s) made for a post by /api/render-post. */
@@ -187,6 +189,16 @@ export interface GeneratePostPayload {
   platforms: Platform[];
   tone?: string;
   additionalContext?: string;
+  /** Product carousel: the products to show, in order (max 8, paths from the brand's product photos). */
+  products?: ProductRef[];
+}
+
+/** A product photo picked for a product carousel. */
+export interface ProductRef {
+  /** Storage path (images bucket). */
+  path: string;
+  name: string;
+  note?: string;
 }
 
 export interface AnalysePdfPayload {

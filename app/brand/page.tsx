@@ -11,7 +11,8 @@ import { ChipGroup, LockButton, SourceTag, TierCards } from "@/components/onboar
 import { BrandPostPreview } from "@/components/brand/BrandPreview";
 import { DeleteBrandDialog } from "@/components/brand/DeleteBrandDialog";
 import { LayoutKitEditor } from "@/components/brand/LayoutKitEditor";
-import { BrandPhotos } from "@/components/brand/BrandPhotos";
+import { PhotoGrid } from "@/components/brand/BrandPhotos";
+import { LogoUpload } from "@/components/brand/LogoUpload";
 import { useStore } from "@/lib/store";
 import { fromBrandDNA } from "@/lib/brand/projection";
 import { isLocked, mergePatch, sectionConfidence, setLock } from "@/lib/brand/merge";
@@ -34,6 +35,11 @@ function BrandProfile() {
   const [voiceLine, setVoiceLine] = useState<string | null>(null);
   const [voiceLoading, setVoiceLoading] = useState(false);
   const voiceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [tab, setTab] = useState<TabId>("about");
+  const goToSection = (s: string) => {
+    setTab(TAB_OF_SECTION[s] ?? "about");
+    setTimeout(() => document.getElementById(`section-${s}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
 
   useEffect(() => {
     if (model) loadGoogleFonts([model.expression.tokens.font.heading.$value, model.expression.tokens.font.body.$value]);
@@ -136,10 +142,12 @@ function BrandProfile() {
                 <p className="text-text-muted mt-0.5">
                   Brandly wasn&apos;t sure about these. Fix anything that&apos;s off, or lock what&apos;s right.{" "}
                   {toCheck.map((s, i) => (
-                    <a key={s} href={`#section-${s}`} className="underline underline-offset-2 hover:text-text">
-                      {SECTION_NAMES[s]}
+                    <span key={s}>
+                      <button type="button" onClick={() => goToSection(s)} className="underline underline-offset-2 hover:text-text">
+                        {SECTION_NAMES[s]}
+                      </button>
                       {i < toCheck.length - 1 ? ", " : ""}
-                    </a>
+                    </span>
                   ))}
                 </p>
               </>
@@ -152,6 +160,24 @@ function BrandProfile() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <div className="space-y-6 min-w-0">
+          <div role="tablist" aria-label="Brand sections" className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border -mb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={clsx(
+                  "shrink-0 px-3 h-10 text-sm -mb-px border-b-2 transition-colors",
+                  tab === t.id ? "border-text font-medium text-text" : "border-transparent text-text-muted hover:text-text",
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {tab === "about" && (
           <Section id="identity" title="About" description="What you are, in plain words" model={model} onLock={lock}>
             <div className="space-y-4">
               <Input label="One-liner" defaultValue={model.identity.oneLiner} onBlur={(e) => e.target.value !== model.identity.oneLiner && edit({ identity: { oneLiner: e.target.value } })} />
@@ -179,7 +205,10 @@ function BrandProfile() {
               </div>
             </div>
           </Section>
+          )}
 
+          {tab === "look" && (
+          <>
           <Section id="expression.tokens.color" title="Colours" description="Used in post designs and image prompts" model={model} onLock={lock}>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {(Object.keys(palette) as (keyof typeof palette)[]).map((role) => (
@@ -260,10 +289,21 @@ function BrandProfile() {
             <LayoutKitEditor model={model} onChange={(kit) => edit({ expression: { layoutKit: kit } })} />
           </Section>
 
-          <Section id="expression.photos" title="Brand photos" description="Real photos used in product, offer and testimonial posts" model={model} onLock={lock}>
-            <BrandPhotos model={model} onChange={(photos) => save({ ...model, expression: { ...model.expression, photos } })} />
+          <Section id="expression.logoPath" title="Logo" description="Shown on every post. Upload your own to replace the one from your website" model={model} onLock={lock}>
+            <LogoUpload model={model} onChange={(logoPath) => save({ ...model, expression: { ...model.expression, logoPath } })} />
           </Section>
 
+          <Section id="expression.photos" title="Products" description="Named product photos. Product carousels show one per slide" model={model} onLock={lock}>
+            <PhotoGrid model={model} role="product" onChange={(photos) => save({ ...model, expression: { ...model.expression, photos } })} />
+          </Section>
+
+          <Section id="expression.photos.other" title="Other photos" description="Team, place and lifestyle photos used in offer and testimonial posts" model={model} onLock={lock}>
+            <PhotoGrid model={model} role="lifestyle" onChange={(photos) => save({ ...model, expression: { ...model.expression, photos } })} />
+          </Section>
+          </>
+          )}
+
+          {tab === "voice" && (
           <Section id="voice" title="Voice" description="Move the sliders and watch the sample line change" model={model} onLock={lock}>
             <div className="grid sm:grid-cols-2 gap-x-8 gap-y-5">
               <ToneSlider left="Funny" right="Serious" value={model.voice.tone.funny_serious} onChange={(v) => setTone("funny_serious", v)} />
@@ -291,7 +331,9 @@ function BrandProfile() {
               />
             </div>
           </Section>
+          )}
 
+          {tab === "audience" && (
           <Section id="strategy.audience" title="Audience" description="Shapes colours, voice and which platforms to post on" model={model} onLock={lock}>
             <div className="space-y-5">
               <div>
@@ -325,7 +367,9 @@ function BrandProfile() {
               )}
             </div>
           </Section>
+          )}
 
+          {tab === "content" && (
           <Section id="content" title="What to post about" model={model} onLock={lock}>
             <div className="space-y-6">
               <div>
@@ -348,17 +392,11 @@ function BrandProfile() {
               </div>
             </div>
           </Section>
+          )}
 
-          <details className="group rounded-2xl border border-border bg-card">
-            <summary className="cursor-pointer list-none p-5 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="font-medium">More about your brand</h2>
-                <p className="text-xs text-text-muted mt-0.5">Positioning, character, personality, look, words, audience and products</p>
-              </div>
-              <span className="text-xs text-text-muted group-open:hidden">Show</span>
-              <span className="text-xs text-text-muted hidden group-open:inline">Hide</span>
-            </summary>
-            <div className="space-y-6 p-5 pt-0">
+          {tab === "more" && (
+            <>
+              <p className="text-sm text-text-muted">Optional depth: positioning, character, personality, look, words, audience and products.</p>
               <PositioningSection model={model} edit={edit} onLock={lock} />
               <IdentitySection model={model} edit={edit} onLock={lock} />
               <PersonalitySection model={model} edit={edit} onLock={lock} />
@@ -366,16 +404,23 @@ function BrandProfile() {
               <WordsSection model={model} edit={edit} save={save} onLock={lock} />
               <AudienceMoreSection model={model} edit={edit} onLock={lock} />
               <ContentMoreSection model={model} edit={edit} onLock={lock} />
-            </div>
-          </details>
+              <Card className="p-5 flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <h2 className="font-medium">Delete this brand</h2>
+                  <p className="text-xs text-text-muted mt-0.5">Removes the profile and all of its posts and automations.</p>
+                </div>
+                <DeleteBrandDialog brandId={brand.id} brandName={model.name} />
+              </Card>
+            </>
+          )}
 
-          <Card className="p-5 flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <h2 className="font-medium">Delete this brand</h2>
-              <p className="text-xs text-text-muted mt-0.5">Removes the profile and all of its posts and automations.</p>
+          {tab !== "more" && (
+            <div className="flex justify-end">
+              <Button variant="secondary" onClick={() => setTab(TABS[TABS.findIndex((t) => t.id === tab) + 1].id)}>
+                Next: {TABS[TABS.findIndex((t) => t.id === tab) + 1].label} <ArrowRight size={14} />
+              </Button>
             </div>
-            <DeleteBrandDialog brandId={brand.id} brandName={model.name} />
-          </Card>
+          )}
         </div>
 
         {/* Sticky live preview */}
@@ -407,6 +452,24 @@ function BrandProfile() {
     </div>
   );
 }
+
+type TabId = "about" | "look" | "voice" | "audience" | "content" | "more";
+const TABS: { id: TabId; label: string }[] = [
+  { id: "about", label: "About" },
+  { id: "look", label: "Look" },
+  { id: "voice", label: "Voice" },
+  { id: "audience", label: "Audience" },
+  { id: "content", label: "Content" },
+  { id: "more", label: "More" },
+];
+const TAB_OF_SECTION: Record<string, TabId> = {
+  identity: "about",
+  "expression.tokens.color": "look",
+  "expression.tokens.font": "look",
+  voice: "voice",
+  "strategy.audience": "audience",
+  content: "content",
+};
 
 const SECTION_NAMES: Record<string, string> = {
   identity: "About",

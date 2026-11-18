@@ -2,11 +2,13 @@ import { generateStructured } from "../../llm";
 import { dedupeColors, hexToRgb } from "../color";
 import { complianceFor } from "../audience";
 import { ExtractSchema } from "../schemas";
+import { citeOptions, evidenceRefs, type CiteItem } from "../cite";
 import { AGE_GROUPS, MOMENTS, MOTIVATIONS, evidenceId, type ModelPatch } from "../model";
 import { BUSINESS_MODEL_KEYS, INDUSTRY_KEYS, PRIMARY_GOAL_KEYS } from "../taxonomy";
 import type { IngestOutput } from "./ingest";
 import type { TextMeasures } from "../../measure/text";
 import type { StageDefinition, StagePatch } from "./types";
+import type { BrandModel } from "../model";
 
 const SYSTEM = `You are a senior brand strategist. You turn evidence about a real business into a precise brand profile.
 Be concrete and specific to this business. Never invent facts that contradict the evidence.
@@ -19,18 +21,54 @@ const near = (a: string, b: string) => {
 };
 
 /** Short excerpts of the other crawled pages, capped so the prompt stays within small-model limits. */
-function otherPages(pages: IngestOutput["pages"]): string {
-  if (!pages?.length) return "";
+function otherPages(pages: IngestOutput["pages"]): { text: string; urls: string[] } {
+  if (!pages?.length) return { text: "", urls: [] };
   let budget = 5000;
   const out: string[] = [];
+  const urls: string[] = [];
   for (const p of pages) {
     const piece = `${new URL(p.url).pathname} | ${p.title} | ${p.headings.slice(0, 4).join(" / ")} | ${p.text.slice(0, 350)}`;
     if (piece.length > budget) break;
     budget -= piece.length;
     out.push(piece);
+    urls.push(p.url);
   }
-  return out.length ? `\nOther pages on the site (path | title | headlines | excerpt):\n${out.join("\n")}` : "";
+  return { text: out.length ? `\nOther pages on the site (path | title | headlines | excerpt):\n${out.join("\n")}` : "", urls };
 }
+
+/** The evidence the prompt actually shows: the home page, the other pages that fit, and any image/PDF source. */
+function citableEvidence(model: BrandModel, ev: ExtractInput, pageUrls: string[]): CiteItem[] {
+  const items: CiteItem[] = [];
+  if (ev.website) items.push({ id: evidenceId("website", ev.website.url), label: `home page ${ev.website.url}` });
+  for (const u of pageUrls) items.push({ id: evidenceId("website", u), label: `page ${new URL(u).pathname}` });
+  for (const e of model.evidence) if (e.source !== "website") items.push({ id: e.id, label: `${e.source} images/screenshots` });
+  return items;
+}
+
+/** Model paths each cited field key stands for. */
+const CITE_PATHS: Record<string, string[]> = {
+  oneLiner: ["identity.oneLiner"],
+  offering: ["strategy.offering"],
+  category: ["strategy.category"],
+  problem: ["strategy.problem"],
+  promise: ["strategy.promise"],
+  differentiators: ["strategy.differentiators"],
+  prism: ["physique", "personality", "culture", "relationship", "reflection", "selfImage"].map((k) => `identity.prism.${k}`),
+  archetype: ["identity.archetype"],
+  tone: ["funny_serious", "formal_casual", "respectful_irreverent", "enthusiastic_matter"].map((k) => `voice.tone.${k}`),
+  voiceDescription: ["voice.description"],
+  vocabularyUse: ["voice.vocabulary.use"],
+  sampleLines: ["voice.sampleLines"],
+  audience: ["gender", "ageGroups", "affluence", "languages", "motivations", "moments", "psychographic"]
+    .map((k) => `strategy.audience.${k}`)
+    .concat(["strategy.audience.markets.countries", "strategy.audience.markets.cityTiers"]),
+  productsServices: ["content.productsServices"],
+  pillars: ["content.pillars"],
+  visualStyle: ["expression.visualStyle"],
+  imageryStyle: ["expression.imageryStyle"],
+  typographyFeel: ["expression.typographyFeel"],
+};
+const CITE_KEYS = Object.keys(CITE_PATHS);
 
 /** The deterministic numbers from the measure stage, so the model's tone guesses start from facts. */
 function measuredBlock(m: TextMeasures | undefined): string {
@@ -50,7 +88,7 @@ Measured from the site copy (facts, not guesses): ${lines.join("; ")}`;
 
 type ExtractInput = IngestOutput & { textMeasures?: TextMeasures; pixels?: { logoPalette: string[]; photoPalette: string[] } };
 
-function buildPrompt(name: string, ev: ExtractInput, detectedColors: string[]): string {
+function buildPrompt(name: string, ev: ExtractInput, detectedColors: string[], pages: string, citeBlock: string): string {
   const site = ev.website;
   const logoColors = ev.pixels?.logoPalette ?? [];
   const photoColors = ev.pixels?.photoPalette ?? [];
@@ -60,12 +98,13 @@ Title: ${site.title}
 Meta description: ${site.description}
 Headlines: ${site.headings.join(" | ")}
 Detected fonts (from CSS): ${site.fonts.join(", ") || "none"}
-Page copy (excerpt): ${site.copySample.slice(0, 3500)}${otherPages(ev.pages)}${measuredBlock(ev.textMeasures)}` : "Website: not provided"}
+Page copy (excerpt): ${site.copySample.slice(0, 3500)}${pages}${measuredBlock(ev.textMeasures)}` : "Website: not provided"}
 ${ev.visual ? `Visual analysis of catalogue/social images: ${JSON.stringify(ev.visual)}` : ""}
 ${ev.igHandle ? `Instagram handle: @${ev.igHandle} (posts not read)` : ""}
 Detected brand colours, most used first: ${detectedColors.join(", ") || "none"}
 ${logoColors.length ? `Logo colours, measured from the logo's pixels (prefer these for primary): ${logoColors.join(", ")}` : ""}
 ${photoColors.length ? `Photo palette (for photography and imagery only, never UI colours): ${photoColors.join(", ")}` : ""}
+${citeBlock}
 
 Return JSON with exactly these keys:
 {
@@ -100,7 +139,8 @@ Return JSON with exactly these keys:
   "audienceConfidence": 0-1,
   "vibe": ["4 words"], "productsServices": ["up to 5"],
   "pillars": ["4 content pillars"], "hashtagClusters": ["6 hashtags with #"],
-  "do": ["3 rules"], "dont": ["3 rules"]
+  "do": ["3 rules"], "dont": ["3 rules"]${citeBlock ? `,
+  "cites": {/* field name -> evidence refs it rests on, e.g. "offering": ["E1","E3"]. Fields: ${CITE_KEYS.join(", ")}. Cite only refs that support the field; leave a field out if it is a guess. */}` : ""}
 }
 Colour rules: if colours were detected, choose primary/secondary/accent ONLY from the detected list. neutral is a light background colour.
 Font rules: use detected fonts when available.`;
@@ -119,12 +159,23 @@ export const extractStage: StageDefinition<ExtractInput> = {
     }
 
     report({ id: "synth", label: "Putting your brand profile together", status: "info" });
-    const r = await generateStructured(ExtractSchema, SYSTEM, buildPrompt(model.name, ev, detectedColors), {
+    const pages = otherPages(ev.pages);
+    const refs = evidenceRefs(citableEvidence(model, ev, pages.urls));
+    const r = await generateStructured(ExtractSchema, SYSTEM, buildPrompt(model.name, ev, detectedColors, pages.text, refs.block), {
       task: "creative",
       maxTokens: 2500,
     });
 
     const patches: StagePatch[] = [];
+    const measured = !!ev.textMeasures && ev.textMeasures.n >= 150;
+    // What each field cites: the model's refs when valid, else the home page (copy) or the image sources (visual).
+    const homeIds = ev.website ? [evidenceId("website", ev.website.url)] : [];
+    const imageIds = model.evidence.filter((e) => e.source !== "website").map((e) => e.id);
+    const fallback: Record<string, string[]> = Object.fromEntries(
+      CITE_KEYS.map((k) => [k, ["visualStyle", "imageryStyle", "typographyFeel"].includes(k) ? [...imageIds, ...homeIds] : k === "audience" ? [...homeIds, ...imageIds] : homeIds.length ? homeIds : imageIds])
+    );
+    const cited = citeOptions(r.cites, CITE_PATHS, refs.resolve, fallback);
+    const only = (...keys: string[]) => Object.fromEntries(keys.flatMap((k) => CITE_PATHS[k]).map((p) => [p, cited[p]]));
     // Evidence the colours came from (the website's styles or the studied images).
     const colourEvidenceIds = [...model.evidence, ...(ev.website ? [{ id: evidenceId("website", ev.website.url), colors: ev.website.colors }] : [])]
       .filter((e) => e.colors?.length)
@@ -205,7 +256,7 @@ export const extractStage: StageDefinition<ExtractInput> = {
           },
         },
       },
-      options: { source: "inferred", confidence: Math.min(0.5, r.audienceConfidence * 0.6) },
+      options: { source: "inferred", confidence: Math.min(0.5, r.audienceConfidence * 0.6), evidenceByPath: only("audience") },
     });
 
     // Classification: a guess the user should confirm (low confidence → needs-check).
@@ -243,11 +294,16 @@ export const extractStage: StageDefinition<ExtractInput> = {
           dont: r.dont,
         },
       },
-      options: { source: "inferred", confidence: ev.website ? 0.7 : 0.55 },
+      options: {
+        source: "inferred",
+        confidence: ev.website ? 0.7 : 0.55,
+        evidenceByPath: cited,
+        noteByPath: measured ? Object.fromEntries(CITE_PATHS.tone.map((p) => [p, "tone guessed from the copy, then checked against measured copy stats"])) : undefined,
+      },
     });
     patches.push({
       patch: { personality: r.personality },
-      options: { source: "inferred", confidence: 0.6, method: "llm", evidenceByPath: Object.fromEntries(Object.keys(r.personality).map((k) => [`personality.${k}`, model.evidence.map((e) => e.id)])) },
+      options: { source: "inferred", confidence: 0.6, method: "llm", evidenceByPath: Object.fromEntries(Object.keys(r.personality).map((k) => [`personality.${k}`, refs.resolve([...(r.cites.tone ?? []), ...(r.cites.voiceDescription ?? [])]).length ? refs.resolve([...(r.cites.tone ?? []), ...(r.cites.voiceDescription ?? [])]) : homeIds.length ? homeIds : model.evidence.map((e) => e.id)])) },
     });
 
     report({

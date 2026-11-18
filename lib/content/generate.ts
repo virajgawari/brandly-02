@@ -7,7 +7,7 @@ import { llmScope } from "@/lib/db/llm-scope";
 import { optionalSession } from "@/lib/db/session";
 import { n8nEnabled, n8nRequest, type N8nRoute } from "@/lib/n8n";
 import { layoutKitOf } from "@/lib/render/kit";
-import type { BrandDNA, GeneratedPost, Platform, TemplateCategory } from "@/lib/types";
+import type { BrandDNA, GeneratedPost, Platform, ProductRef, TemplateCategory } from "@/lib/types";
 import { chooseLayout, pickBrief } from "./brief";
 import { recentPosts } from "./history";
 import { buildPostPrompt, finalizePost, postSchemaFor, POST_PROMPT_VERSION, POST_TEMPERATURE } from "./prompt";
@@ -21,6 +21,8 @@ export interface GenerateInput {
   tone?: string;
   additionalContext?: string;
   triggerContext?: string;
+  /** Product carousel: validated products in slide order. */
+  products?: ProductRef[];
   /** Which feature the call is logged under. */
   feature: "generate-post" | "automation";
   /** Original request body, forwarded to n8n alongside the built prompt. */
@@ -39,6 +41,7 @@ export async function generatePost(input: GenerateInput): Promise<GenerateResult
   const history = await recentPosts(model?.id, 15, session);
   const brief = pickBrief(model, history, input.template, {
     allowCarousel: platforms.some((p) => p === "instagram" || p === "linkedin"),
+    products: input.products,
   });
   const prompt = buildPostPrompt({ ...input, brief, history });
 
@@ -68,6 +71,10 @@ export async function generatePost(input: GenerateInput): Promise<GenerateResult
 
   const post = finalizePost(raw, { model, dna, brief, platforms });
   if (!post) return { error: "The AI reply did not match the expected format.", status: 502 };
+  if (brief.products?.length) {
+    post.layout = "product-cover";
+    return { post, generationId };
+  }
   const kit = layoutKitOf(model);
   if (kit) post.layout = chooseLayout(kit, post.format, history, { carousel: brief.carousel && (post.slides?.length ?? 0) >= 2 });
   return { post, generationId };

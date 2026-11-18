@@ -24,6 +24,10 @@ export interface LayoutProps {
   logoTone?: "light" | "dark";
   /** Data URI of the photo, if the layout uses one. */
   photo?: string;
+  /** Product carousel cover: the product photos shown in the collage. */
+  photos?: string[];
+  /** Carousel slide without the step number (the product carousel's closing slide). */
+  noNumber?: boolean;
   headline: string;
   subline?: string;
   cta?: string;

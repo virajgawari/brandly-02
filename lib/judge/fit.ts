@@ -1,17 +1,10 @@
 // Brand-fit judge: one LLM call scores a generated post on the same facets as onboarding,
 // then compares each facet with the brand's own profile. No server imports, so it is unit-testable.
 import type { BrandModel } from "../brand/model";
+import { FIT_PASS, JUDGE_VERSION, MAX_GAP, MIN_FACETS, NOTABLE_GAP } from "./config";
 import { FACETS, PERSONALITY_FACETS, defaultJudge, scoreTexts, type Facet, type RateOptions } from "../measure/rate";
 
-export const JUDGE_VERSION = "judge-fit@1";
-/** Fit (100 - mean |gap|) at or above this passes. */
-export const FIT_PASS = 75;
-/** A single facet further than this from the brand fails the post. */
-export const MAX_GAP = 30;
-/** Gap that is worth showing in the scorecard. */
-export const NOTABLE_GAP = 15;
-/** Fewer scored facets than this is too little signal: the result is "unsure" and passes. */
-export const MIN_FACETS = 3;
+export { JUDGE_VERSION, FIT_PASS, MAX_GAP, NOTABLE_GAP, MIN_FACETS };
 
 export interface FacetFit {
   facet: Facet;

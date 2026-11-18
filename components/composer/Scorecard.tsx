@@ -1,4 +1,4 @@
-import { NOTABLE_GAP } from "@/lib/judge/fit";
+import { NOTABLE_GAP } from "@/lib/judge/config";
 import type { PostCheck } from "@/lib/types";
 
 const LABEL: Record<string, string> = {

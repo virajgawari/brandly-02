@@ -1,5 +1,5 @@
 import { paragraphs } from "../../measure/paragraphs";
-import { FACETS, PERSONALITY_FACETS, rateTexts, type Facet, type RateOptions } from "../../measure/rate";
+import { FACETS, PERSONALITY_FACETS, facetPath, rateTexts, type Facet, type RateOptions } from "../../measure/rate";
 import { MEASURE_VERSION } from "../../measure/version";
 import type { TextMeasures } from "../../measure/text";
 import { evidenceId, type Measures } from "../model";
@@ -12,7 +12,7 @@ const BUDGET_MS = 50_000;
 
 export type RateInput = IngestOutput & { textMeasures?: TextMeasures; /** Overrides for tests. */ rateOptions?: Partial<RateOptions> };
 
-const path = (f: Facet) => ((PERSONALITY_FACETS as readonly string[]).includes(f) ? `personality.${f}` : `voice.tone.${f}`);
+const path = facetPath;
 
 /** An LLM judge scores personality and tone on sampled paragraphs; each score must quote the text. */
 export const rateStage: StageDefinition<RateInput> = {

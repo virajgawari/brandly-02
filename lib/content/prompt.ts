@@ -93,6 +93,22 @@ platformVariants: only ${platforms.join(", ")}. facebook = more conversational, 
   return { system: POST_SYSTEM, user, brandContext: brandContextOf(r.model, r.dna) };
 }
 
+/** One revise pass: the same brief and brand context, plus the post and what was wrong with it. */
+export function buildRevisePrompt(user: string, post: GeneratedPost, failures: string[]): string {
+  const keep = { caption: post.caption, hashtags: post.hashtags, cta: post.cta, headline: post.headline, subline: post.subline, platformVariants: post.platformVariants };
+  return [
+    user,
+    "",
+    "REVISE THIS POST:",
+    JSON.stringify(keep, null, 2),
+    "",
+    "It failed these checks:",
+    ...failures.map((f) => `- ${f}`),
+    "",
+    "Rewrite it so every check passes. Keep the same idea, brief and JSON shape. Fix only what failed; do not add new claims.",
+  ].join("\n");
+}
+
 /** Schema that also rejects captions containing banned phrases (so the retry fixes them). */
 export function postSchemaFor(model?: BrandModel) {
   const banned = bannedWords(model).map((w) => w.toLowerCase());

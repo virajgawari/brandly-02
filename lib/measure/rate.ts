@@ -11,6 +11,9 @@ export const TONE_AXES = ["funny_serious", "formal_casual", "respectful_irrevere
 export const FACETS = [...PERSONALITY_FACETS, ...TONE_AXES] as const;
 export type Facet = (typeof FACETS)[number];
 
+/** Where a facet lives in the Brand Model: personality.<facet> or voice.tone.<facet>. */
+export const facetPath = (f: Facet) => ((PERSONALITY_FACETS as readonly string[]).includes(f) ? `personality.${f}` : `voice.tone.${f}`);
+
 const scored = z.object({ score: z.number().min(0).max(100), quote: z.string() });
 const rating = z.object({
   id: z.number().int(),
@@ -166,14 +169,16 @@ export interface RateReport {
   failedCalls: number;
 }
 
+/** The real LLM judge for one batch of texts. */
+export const defaultJudge = (batch: string[]) =>
+  generateStructured(replySchema, SYSTEM, userPrompt(batch), { task: "judge", maxTokens: 4500, temperature: 0 });
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Every text goes to the judge `runs` times, in a different order each time. Returns one score map per text per run. */
 export async function scoreTexts(texts: string[], opts: RateOptions = {}) {
   const { runs = 2, batchSize = 10, delayMs = 4000 } = opts;
-  const judge =
-    opts.judge ??
-    ((batch: string[]) => generateStructured(replySchema, SYSTEM, userPrompt(batch), { task: "judge", maxTokens: 4500, temperature: 0 }));
+  const judge = opts.judge ?? defaultJudge;
 
   const perRun: Partial<Record<Facet, number>>[][] = [];
   let calls = 0;

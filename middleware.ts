@@ -33,7 +33,7 @@ export async function middleware(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const signedIn = Boolean(data?.claims);
   const path = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
+  const isPublic = path === "/" || PUBLIC_PATHS.some((p) => path.startsWith(p));
 
   if (!signedIn && !isPublic) {
     if (path.startsWith("/api/")) return NextResponse.json({ error: "Please sign in." }, { status: 401 });

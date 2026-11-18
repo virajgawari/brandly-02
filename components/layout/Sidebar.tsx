@@ -3,12 +3,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import clsx from "clsx";
-import { CalendarDays, Check, ChevronsUpDown, Home, LogOut, Palette, PenLine, Plus, Workflow } from "lucide-react";
+import { CalendarDays, Check, ChevronsUpDown, Home, LogOut, Package, Palette, PenLine, Plus, SlidersHorizontal, Workflow } from "lucide-react";
 import { useStore } from "@/lib/store";
 
 export const NAV = [
   { href: "/", icon: Home, label: "Home" },
   { href: "/brand", icon: Palette, label: "Brand" },
+  { href: "/catalog", icon: Package, label: "Catalogue" },
   { href: "/composer", icon: PenLine, label: "Create" },
   { href: "/calendar", icon: CalendarDays, label: "Calendar" },
   { href: "/automation", icon: Workflow, label: "Automations" },
@@ -28,15 +29,19 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { brands, activeBrandId, setActiveBrand, getActiveBrand } = useStore();
   const activeBrand = getActiveBrand();
+  const role = useStore((s) => s.account?.role);
+  const isAdmin = role === "owner" || role === "admin";
   const [open, setOpen] = useState(false);
   const colorsOf = (b: (typeof brands)[number]) => Object.values(b.dna.colors);
 
   return (
     <aside className="hidden md:flex w-60 shrink-0 h-screen bg-surface border-r border-border flex-col sticky top-0">
-      <div className="px-4 h-14 flex items-center gap-2 border-b border-border">
+      {/* Plain anchor on purpose: a full page load refreshes the data and lands on Home. */}
+      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+      <a href="/" aria-label="Brandly home" className="px-4 h-14 flex items-center gap-2 border-b border-border">
         <span className="w-6 h-6 rounded-md bg-text text-bg grid place-items-center text-[13px] font-bold">B</span>
         <span className="text-[15px] font-semibold tracking-tight">Brandly</span>
-      </div>
+      </a>
 
       {/* Brand switcher */}
       <div className="p-3 border-b border-border relative">
@@ -84,7 +89,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 p-3 space-y-0.5" aria-label="Main">
-        {NAV.map(({ href, icon: Icon, label }) => {
+        {[...NAV, ...(isAdmin ? [{ href: "/admin/agent", icon: SlidersHorizontal, label: "Admin" }] : [])].map(({ href, icon: Icon, label }) => {
           const active = pathname === href || (href !== "/" && pathname.startsWith(href));
           return (
             <Link
@@ -166,7 +171,7 @@ function AccountMenu() {
 export function MobileNav() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Main" className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-surface border-t border-border grid grid-cols-5 pb-[env(safe-area-inset-bottom)]">
+    <nav aria-label="Main" className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-surface border-t border-border grid grid-cols-6 pb-[env(safe-area-inset-bottom)]">
       {NAV.map(({ href, icon: Icon, label }) => {
         const active = pathname === href || (href !== "/" && pathname.startsWith(href));
         return (

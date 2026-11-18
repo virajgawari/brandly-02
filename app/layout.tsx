@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Brandly — AI-Powered Brand Content Platform",
-  description: "Build your Brand DNA, generate on-brand content, and automate social media publishing.",
+  title: "Brandly — Social posts that sound like your brand",
+  description: "Brandly learns your colours, fonts and voice once, then helps you write, plan and schedule your social posts.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -13,6 +13,7 @@ import { DeleteBrandDialog } from "@/components/brand/DeleteBrandDialog";
 import { LayoutKitEditor } from "@/components/brand/LayoutKitEditor";
 import { PhotoGrid } from "@/components/brand/BrandPhotos";
 import { LogoUpload } from "@/components/brand/LogoUpload";
+import { ChannelsSection } from "@/components/brand/ChannelsSection";
 import { useStore } from "@/lib/store";
 import { fromBrandDNA } from "@/lib/brand/projection";
 import { isLocked, mergePatch, sectionConfidence, setLock } from "@/lib/brand/merge";
@@ -206,6 +207,8 @@ function BrandProfile() {
             </div>
           </Section>
           )}
+
+          {tab === "about" && <ChannelsSection sources={brand.sources} onSave={(next) => saveBrandModel(model, next)} />}
 
           {tab === "look" && (
           <>

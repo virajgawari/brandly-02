@@ -6,6 +6,7 @@ import { layoutNeedsPhoto } from "@/lib/content/brief";
 import { brandFonts } from "./fonts";
 import { layoutKitOf } from "./kit";
 import { LAYOUTS, type LayoutProps } from "./layouts";
+import { applyShow, type ShowFlags } from "./show";
 
 export type RenderSize = "1080x1350" | "1080x1080";
 
@@ -22,11 +23,14 @@ export interface RenderInput {
   photos?: string[];
   /** Product carousel: one photo per slide (index matches post.slides; cover and CTA are undefined). */
   slidePhotos?: (string | undefined)[];
+  /** Hide the logo, call to action or supporting line. */
+  show?: ShowFlags;
 }
 
 /** Renders one PNG per slide (one for a single-image post). */
 export async function renderPost(input: RenderInput): Promise<Buffer[]> {
-  const { model, post, size } = input;
+  const { model, size } = input;
+  const { post, logo } = applyShow(input.post, input.logo, input.show);
   const [width, height] = size.split("x").map(Number);
   const kit = layoutKitOf(model)!;
   const t = model.expression.tokens;
@@ -36,7 +40,7 @@ export async function renderPost(input: RenderInput): Promise<Buffer[]> {
     colors: { primary: t.color.primary.$value, secondary: t.color.secondary.$value, accent: t.color.accent.$value, neutral: t.color.neutral.$value },
     fonts: { heading: fonts.heading, body: fonts.body },
     brandName: model.name,
-    logo: input.logo,
+    logo,
     logoTone: input.logoTone,
     width,
     height,

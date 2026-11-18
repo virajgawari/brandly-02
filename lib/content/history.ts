@@ -1,4 +1,6 @@
 import "server-only";
+import { acceptedInsights } from "@/lib/agent/learn";
+import { learnedBlock } from "@/lib/agent/stats";
 import { optionalSession, type Session } from "@/lib/db/session";
 import type { GeneratedPost } from "@/lib/types";
 
@@ -23,6 +25,8 @@ export interface ContentHistory {
   posts: PastPost[];
   /** Thumbs-down counts by format and layout (Phase 4 learning). */
   dislikes: { formats: Record<string, number>; layouts: Record<string, number> };
+  /** Insights the user accepted (statements), injected as "what works for this brand". */
+  learned?: { statement: string }[];
 }
 
 export const EMPTY_HISTORY: ContentHistory = { posts: [], dislikes: { formats: {}, layouts: {} } };
@@ -79,7 +83,7 @@ export async function recentPosts(brandId: string | undefined, limit = 15, sessi
         if (lay) dislikes.layouts[lay] = (dislikes.layouts[lay] ?? 0) + 1;
       }
     }
-    return { posts, dislikes };
+    return { posts, dislikes, learned: await acceptedInsights(s, brandId) };
   } catch (err) {
     console.warn("[history]", err instanceof Error ? err.message : err);
     return EMPTY_HISTORY;
@@ -88,11 +92,12 @@ export async function recentPosts(brandId: string | undefined, limit = 15, sessi
 
 /** The ALREADY POSTED prompt block. */
 export function historyBlock(h: ContentHistory): string {
-  if (!h.posts.length) return "";
+  const learned = learnedBlock(h.learned ?? []);
+  if (!h.posts.length) return learned;
   const lines = h.posts.slice(0, 15).map((p, i) => {
     const tags = [p.format, p.hook && `hook:${p.hook}`, p.pillar].filter(Boolean).join(", ");
     return `${i + 1}. "${p.opening}"${p.headline ? ` / headline "${p.headline}"` : ""}${tags ? ` [${tags}]` : ""}`;
   });
   return `ALREADY POSTED (newest first). Do NOT reuse these openings, sentence structures, headlines or angles. Start differently:
-${lines.join("\n")}`;
+${lines.join("\n")}${learned ? `\n\n${learned}` : ""}`;
 }

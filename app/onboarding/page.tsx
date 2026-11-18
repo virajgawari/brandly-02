@@ -96,6 +96,13 @@ export default function OnboardingPage() {
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => abortRef.current?.abort(), []);
+  // Deep link from Home: /onboarding?door=build jumps straight to the questionnaire.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("door") === "build") {
+      setDoor("build");
+      setStep("name");
+    }
+  }, []);
   // Funnel: which step people reach, and on which door.
   useEffect(() => {
     track("onboarding_step", { props: { step, door } });
@@ -318,7 +325,7 @@ export default function OnboardingPage() {
             inputMode="url"
             autoFocus
           />
-          <div className="mt-6 flex flex-col items-center gap-2 text-sm text-text-muted">
+          <div className="mt-4 flex justify-center text-sm text-text-muted">
             <button
               onClick={() => setDoor(door === "refine" ? "analyse" : "refine")}
               aria-pressed={door === "refine"}
@@ -326,11 +333,22 @@ export default function OnboardingPage() {
             >
               {door === "refine" && <Check size={14} className="inline mr-1 -mt-0.5" />}I have a website, but no real brand yet
             </button>
-            <button onClick={() => { setWebsiteUrl(""); setDoor("analyse"); setStep("instagram"); }} className="underline-offset-4 hover:underline">
-              No website? Use Instagram or files
+          </div>
+          <p className="mt-8 mb-3 text-xs text-text-muted text-center">No website?</p>
+          <div className="grid sm:grid-cols-2 gap-3 text-left">
+            <button
+              onClick={() => { setWebsiteUrl(""); setDoor("analyse"); setStep("instagram"); }}
+              className="rounded-2xl border border-border bg-card p-4 hover:border-text/30 transition-colors"
+            >
+              <p className="font-medium text-sm">Use Instagram or files</p>
+              <p className="text-xs text-text-muted mt-1">Add your handle or screenshots and we learn from those.</p>
             </button>
-            <button onClick={() => { setDoor("build"); setStep("name"); }} className="underline-offset-4 hover:underline">
-              I&apos;m starting from scratch
+            <button
+              onClick={() => { setDoor("build"); setStep("name"); }}
+              className="rounded-2xl border border-border bg-card p-4 hover:border-text/30 transition-colors"
+            >
+              <p className="font-medium text-sm">Start from scratch</p>
+              <p className="text-xs text-text-muted mt-1">Answer a few questions and pick one of three directions.</p>
             </button>
           </div>
         </OnboardingShell>

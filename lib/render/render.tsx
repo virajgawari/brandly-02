@@ -64,8 +64,9 @@ export async function renderPost(input: RenderInput): Promise<Buffer[]> {
   } else if (input.layout === "carousel-cover" && post.slides?.length) {
     const slides = post.slides;
     const total = slides.length;
-    frames.push({ ...base, headline: slides[0].headline || headline, subline: slides[0].body || post.subline, photo: input.photo, slide: { index: 1, total } });
-    slides.slice(1).forEach((s, i) => frames.push({ ...base, headline: s.headline, subline: s.body, cta: post.cta, slide: { index: i + 2, total } }));
+    const photoAt = (i: number) => input.slidePhotos?.[i] ?? (i === 0 ? input.photo : undefined);
+    frames.push({ ...base, headline: slides[0].headline || headline, subline: slides[0].body || post.subline, photo: photoAt(0), slide: { index: 1, total } });
+    slides.slice(1).forEach((s, i) => frames.push({ ...base, headline: s.headline, subline: s.body, cta: post.cta, photo: photoAt(i + 1), slide: { index: i + 2, total } }));
   } else {
     frames.push({ ...base, headline, subline: post.subline, cta: post.cta, items: post.items, stat: post.stat, photo: layoutNeedsPhoto(input.layout) ? input.photo : undefined });
   }

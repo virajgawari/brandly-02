@@ -4,7 +4,7 @@ import { chooseLayout, layoutNeedsPhoto } from "@/lib/content/brief";
 import { recentPosts } from "@/lib/content/history";
 import { errorResponse, requireSession } from "@/lib/db/session";
 import { layoutKitOf } from "@/lib/render/kit";
-import { encodeForUpload, generatePhoto, loadSlidePhotos, loadVisuals, resolvePhoto, storeRendered, type PhotoRef } from "@/lib/render/media";
+import { encodeForUpload, fillSlidePhotos, generatePhoto, generateSlidePhotos, loadPhotoRefs, loadSlidePhotos, loadVisuals, pickBrandPhoto, resolvePhoto, storeRendered, type PhotoRef } from "@/lib/render/media";
 import { renderPost, type RenderSize } from "@/lib/render/render";
 import type { GeneratedPost, RenderedMedia } from "@/lib/types";
 
@@ -19,6 +19,8 @@ interface Body {
   size?: RenderSize;
   /** Omit (or "auto") to choose a photo; "generate" for a new AI photo; null for none; or reuse an earlier choice. */
   photo?: PhotoRef | null | "auto" | "generate";
+  /** Carousel: the photos already chosen, one per slide (reused so layout or text edits don't regenerate them). */
+  slidePhotos?: (PhotoRef | null)[];
   /** Save to storage and return signed URLs (needs sign-in). Otherwise returns small JPEG previews. */
   store?: boolean;
   /** Folder name for stored images (usually the post id). */
@@ -45,26 +47,49 @@ export async function POST(req: NextRequest) {
     const aspect = size === "1080x1080" ? "1:1" : "4:5";
     const isProduct = layout === "product-cover";
     let photo: PhotoRef | undefined = typeof b.photo === "object" && b.photo ? b.photo : undefined;
+    const slideCount = b.post.slides?.length ?? 0;
+    const isCarousel = layout === "carousel-cover" && slideCount >= 2;
+    let slideRefs: PhotoRef[] | undefined;
+    let noneGenerated = false;
     if (isProduct) {
       // Product photos come from the slides themselves; nothing to choose or generate.
+    } else if (isCarousel) {
+      // Every slide gets its own photo. Reuse the ones we were given; only generate when asked or when nothing was chosen yet.
+      const given = (b.slidePhotos ?? []).filter((x): x is PhotoRef => !!x);
+      if (b.photo === "generate") {
+        const made = await generateSlidePhotos(session, model, b.post, aspect);
+        noneGenerated = !made.some(Boolean);
+        slideRefs = fillSlidePhotos(made, slideCount);
+      } else if (given.length) slideRefs = fillSlidePhotos(b.slidePhotos ?? [], slideCount);
+      else if (photo) slideRefs = fillSlidePhotos([photo], slideCount);
+      else if (b.photo === undefined || b.photo === "auto") {
+        const brand = pickBrandPhoto(model, history);
+        if (brand && b.post.visualBrief?.usesProductPhoto) slideRefs = fillSlidePhotos([brand], slideCount);
+        else {
+          slideRefs = fillSlidePhotos(await generateSlidePhotos(session, model, b.post, aspect), slideCount);
+          if (!slideRefs.length && brand) slideRefs = fillSlidePhotos([brand], slideCount);
+        }
+      }
+      photo = slideRefs?.[0];
     } else if (b.photo === "generate") photo = await generatePhoto(session, model, b.post, aspect);
     else if ((b.photo === undefined || b.photo === "auto") && layoutNeedsPhoto(layout)) photo = await resolvePhoto(session, model, b.post, history, aspect);
-    const photoError = b.photo === "generate" && !isProduct && !photo ? "Couldn't make a new photo, try again." : undefined;
+    const photoError = b.photo === "generate" && !isProduct && (isCarousel ? noneGenerated : !photo) ? "Couldn't make new photos, try again." : undefined;
 
-    const visuals = await loadVisuals(session, model, photo);
+    const visuals = await loadVisuals(session, model, isCarousel ? undefined : photo);
+    const carouselPhotos = isCarousel && slideRefs?.length ? await loadPhotoRefs(session, model, slideRefs) : undefined;
     const slidePhotos = isProduct ? await loadSlidePhotos(session, model, (b.post.slides ?? []).map((s) => s.photoPath)) : undefined;
     const photos = slidePhotos?.filter((x): x is string => !!x).slice(0, 4);
-    const pngs = await renderPost({ model, post: b.post, layout, size, logo: visuals.logo, logoTone: visuals.logoTone, photo: visuals.photo, photos, slidePhotos });
+    const pngs = await renderPost({ model, post: b.post, layout, size, logo: visuals.logo, logoTone: visuals.logoTone, photo: isCarousel ? carouselPhotos?.[0] : visuals.photo, photos, slidePhotos: isCarousel ? carouselPhotos : slidePhotos });
 
     let rendered: RenderedMedia;
     if (b.store) {
       const key = (b.key ?? crypto.randomUUID()).replace(/[^\w-]/g, "").slice(0, 64) || crypto.randomUUID();
       const encoded = await Promise.all(pngs.map((p) => encodeForUpload(p)));
       const { paths, urls } = await storeRendered(session, model.id, key, encoded);
-      rendered = { layout, paths, urls, size, photo };
+      rendered = { layout, paths, urls, size, photo, slidePhotos: slideRefs };
     } else {
       const previews = await Promise.all(pngs.map((p) => encodeForUpload(p, 80)));
-      rendered = { layout, paths: [], urls: previews.map((x) => `data:${x.mime};base64,${x.buf.toString("base64")}`), size, photo };
+      rendered = { layout, paths: [], urls: previews.map((x) => `data:${x.mime};base64,${x.buf.toString("base64")}`), size, photo, slidePhotos: slideRefs };
     }
     return NextResponse.json({ rendered, layouts: kit.layouts, photoError });
   } catch (err) {

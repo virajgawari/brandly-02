@@ -39,15 +39,16 @@ function referencePaths(model: BrandModel, post: GeneratedPost): { paths: string
 }
 
 /** Generated photo: Muse Image first (based on the brand's product photos when the post features one), then the n8n workflow. */
-export async function generatePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: "4:5" | "1:1"): Promise<PhotoRef | undefined> {
-  if (!post.imagePrompt) return undefined;
+export async function generatePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: "4:5" | "1:1", promptOverride?: string): Promise<PhotoRef | undefined> {
+  const imagePrompt = promptOverride ?? post.imagePrompt;
+  if (!imagePrompt) return undefined;
 
   if (museEnabled()) {
-    const { paths, notes } = session ? referencePaths(model, post) : { paths: [], notes: [] };
+    const { paths, notes } = session && !promptOverride ? referencePaths(model, post) : { paths: [], notes: [] };
     const refs = session ? (await Promise.all(paths.map((p) => imageFromStorage(session.db, "images", p, { maxSide: 1024 })))).filter((x): x is string => !!x) : [];
     const prompt = refs.length
-      ? `Keep the product from the reference photo exactly as it looks (shape, label, colour) and place it in this scene: ${post.imagePrompt}${notes.length ? ` Product: ${notes.join("; ")}.` : ""}`
-      : post.imagePrompt;
+      ? `Keep the product from the reference photo exactly as it looks (shape, label, colour) and place it in this scene: ${imagePrompt}${notes.length ? ` Product: ${notes.join("; ")}.` : ""}`
+      : imagePrompt;
     const buf = await llmScope("image", { brandId: model.id }, () => museImage({ prompt, aspect, references: refs }));
     if (buf) {
       if (!session) return undefined; // nowhere to keep it; signed-out use falls through to n8n
@@ -57,12 +58,47 @@ export async function generatePhoto(session: Session | null, model: BrandModel, 
   }
 
   if (!n8nEnabled()) return undefined;
-  const { status, data } = await n8nRequest("generate-image", { prompt: post.imagePrompt, aspect, styled: true });
+  const { status, data } = await n8nRequest("generate-image", { prompt: imagePrompt, aspect, styled: true });
   if (status >= 400 || typeof data.imageUrl !== "string") {
     console.warn("[render] image generation failed", data.error);
     return undefined;
   }
   return { kind: "generated", ref: data.imageUrl };
+}
+
+/** Prompt for one carousel slide: the post's visual brief plus what this slide says, so slides don't repeat the same scene. */
+export function slidePrompt(post: GeneratedPost, index: number): string {
+  const s = post.slides?.[index];
+  const idea = [s?.headline, s?.body].filter(Boolean).join(" — ");
+  return `${post.imagePrompt ?? ""} This image illustrates slide ${index + 1} of ${post.slides?.length ?? 1}: "${idea}". Show that idea with a different scene, angle or detail from the other slides, same style and mood.`.trim();
+}
+
+/** One generated photo per carousel slide, made in parallel to stay inside the route's time limit. */
+export async function generateSlidePhotos(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: "4:5" | "1:1"): Promise<(PhotoRef | undefined)[]> {
+  const n = post.slides?.length ?? 0;
+  return Promise.all(Array.from({ length: n }, (_, i) => generatePhoto(session, model, post, aspect, slidePrompt(post, i))));
+}
+
+/** A photo for every slide: missing ones reuse the photos we have, in turn. Empty when there are none. */
+export function fillSlidePhotos<T>(photos: (T | undefined | null)[], count: number): T[] {
+  const have = photos.filter((p): p is T => !!p);
+  if (!have.length) return [];
+  return Array.from({ length: count }, (_, i) => photos[i] ?? have[i % have.length]);
+}
+
+/** Photo data URIs for Satori, with the kit's photo treatment. */
+export async function loadPhotoRefs(session: Session | null, model: BrandModel, refs: PhotoRef[]): Promise<(string | undefined)[]> {
+  const kit = layoutKitOf(model)!;
+  const duotone = kit.photoTreatment === "duotone" ? model.expression.tokens.color.primary.$value : undefined;
+  return Promise.all(
+    refs.map((r) =>
+      r.kind === "brand"
+        ? session
+          ? imageFromStorage(session.db, "images", r.ref, { maxSide: 1400, duotone })
+          : Promise.resolve(undefined)
+        : imageFromUrl(r.ref, { maxSide: 1400, duotone })
+    )
+  );
 }
 
 /** Chooses where the photo comes from: a real brand photo when it fits, else a generated one. */

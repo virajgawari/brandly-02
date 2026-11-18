@@ -54,10 +54,12 @@ export default function ComposerPage() {
 
   type PhotoChoice = RenderedMedia["photo"] | null | "auto" | "generate";
   const callRender = async (p: GeneratedPost, o: { layout?: LayoutId; photo?: PhotoChoice; size?: RenderedMedia["size"]; store?: boolean; key?: string }, onPhotoError?: (msg: string) => void) => {
+    // Carousels keep the photo already made for every slide, unless new ones were asked for.
+    const slidePhotos = o.photo === "generate" ? undefined : rendered?.slidePhotos;
     const res = await fetch("/api/render-post", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ brandModel: brand?.model, post: p, layout: o.layout ?? p.layout, photo: o.photo, size: o.size ?? size, store: o.store, key: o.key }),
+      body: JSON.stringify({ brandModel: brand?.model, post: p, layout: o.layout ?? p.layout, photo: o.photo, slidePhotos, size: o.size ?? size, store: o.store, key: o.key }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.rendered) throw new Error(data.error ?? `Couldn't make the image (HTTP ${res.status})`);
@@ -536,7 +538,7 @@ export default function ComposerPage() {
                     )}
                     {!isProductPost && (
                       <Button size="sm" variant="secondary" disabled={rendering} onClick={() => renderPreview(post, { photo: "generate" })}>
-                        New AI photo
+                        {(rendered?.slidePhotos?.length ?? 0) > 0 ? "New AI photos" : "New AI photo"}
                       </Button>
                     )}
                     {rendering && <span className="text-xs text-text-muted">Laying out your post…</span>}

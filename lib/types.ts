@@ -71,6 +71,8 @@ export interface RenderedMedia {
   size: "1080x1350" | "1080x1080";
   /** The photo used inside the layout (brand photo path or generated image URL). */
   photo?: { kind: "brand" | "generated"; ref: string };
+  /** Carousel: one photo per slide, same order as post.slides. `photo` is the first. */
+  slidePhotos?: { kind: "brand" | "generated"; ref: string }[];
 }
 
 export interface GeneratedPost {

@@ -5,6 +5,7 @@ import AppShell from "@/components/layout/AppShell";
 import { useStore } from "@/lib/store";
 import { Button, Card, Chip, SectionLabel, PageHeader, EmptyState } from "@/components/ui";
 import Link from "next/link";
+import PostMetricsForm from "@/components/agent/PostMetricsForm";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
   startOfWeek, endOfWeek, isSameMonth, isSameDay, parseISO,
@@ -457,6 +458,7 @@ export default function CalendarPage() {
                       Delete
                     </Button>
                   </div>
+                  {selectedPost.status === "published" && <PostMetricsForm postId={selectedPost.id} platforms={selectedPost.platforms} />}
                 </Card>
               ) : (
                 <Card className="p-4 text-center">

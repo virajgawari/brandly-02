@@ -7,7 +7,7 @@ import type { ScheduledPost } from "@/lib/types";
 // so later edits can be measured against what the model wrote.
 export async function POST(req: NextRequest) {
   try {
-    const { post, template, topic } = (await req.json()) as { post?: ScheduledPost; template?: string; topic?: string };
+    const { post, template, topic, productId } = (await req.json()) as { post?: ScheduledPost; template?: string; topic?: string; productId?: string };
     if (!post?.id || !post.brandId || !post.content) return NextResponse.json({ error: "post with id, brandId and content is required" }, { status: 400 });
     const s = await requireSession();
     const { error } = await s.db.from("posts").insert({
@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
       generation_id: post.generationId ?? null,
       template: template ?? null,
       topic: topic ?? null,
+      product_id: productId ?? null,
       created_by: s.userId,
     });
     if (error) throw error;

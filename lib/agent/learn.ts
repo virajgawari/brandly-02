@@ -33,6 +33,7 @@ interface PostRow {
   content: GeneratedPost | null;
   original_content: GeneratedPost | null;
   generation_id: string | null;
+  product_id: string | null;
 }
 
 /** Loads a brand's recent posts with their feedback and latest metrics, shaped for the stats module. */
@@ -40,7 +41,7 @@ export async function loadLearnPosts(s: Session, brandId: string, windowDays: nu
   const since = new Date(Date.now() - windowDays * 86_400_000).toISOString();
   const { data, error } = await s.db
     .from("posts")
-    .select("id, status, template, content, original_content, generation_id")
+    .select("id, status, template, content, original_content, generation_id, product_id")
     .eq("brand_id", brandId)
     .gte("created_at", since)
     .order("created_at", { ascending: false })
@@ -79,10 +80,18 @@ export async function loadLearnPosts(s: Session, brandId: string, windowDays: nu
     for (const [post, rates] of perPost) engagement.set(post, rates.reduce((a, b) => a + b, 0) / rates.length);
   }
 
+  const productIds = [...new Set(rows.map((r) => r.product_id).filter((x): x is string => !!x))];
+  const productName = new Map<string, string>();
+  if (productIds.length) {
+    const { data: prods } = await s.db.from("products").select("id, name").in("id", productIds);
+    for (const p of (prods ?? []) as { id: string; name: string }[]) productName.set(p.id, p.name);
+  }
+
   const posts = rows.map<LearnPost>((r) => ({
     id: r.id,
     status: r.status,
     template: r.template ?? undefined,
+    product: r.product_id ? productName.get(r.product_id) : undefined,
     format: r.content?.format,
     hook: r.content?.hook,
     layout: r.content?.rendered?.layout ?? r.content?.layout,
@@ -137,7 +146,7 @@ export async function runLearner(s: Session, brandId: string, trigger: "manual" 
 
   const { data: run, error: runErr } = await s.db
     .from("agent_runs")
-    .insert({ workspace_id: s.workspaceId, brand_id: brandId, trigger, posts_seen: posts.length, with_metrics: withMetrics, findings: findings.length, llm_call_id: llmCallId ?? null, error: error ?? null, created_by: s.userId })
+    .insert({ workspace_id: s.workspaceId, brand_id: brandId, trigger, posts_seen: posts.length, with_metrics: withMetrics, findings: findings.length, llm_call_id: llmCallId ?? null, error: error ?? null, created_by: s.userId || null })
     .select("id")
     .single();
   if (runErr) throw runErr;

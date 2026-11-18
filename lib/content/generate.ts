@@ -34,6 +34,10 @@ export interface GenerateInput {
 
 /** No revise pass after this long: the route allows 60 s and a revise plus its re-check can take 20 s. */
 export const REVISE_DEADLINE_MS = 30_000;
+/** Checks and the revise pass must be done this long after the request started (the route's limit is 60 s). */
+export const HARD_DEADLINE_MS = 50_000;
+/** Not worth starting a judge call with less than this left. */
+const MIN_JUDGE_MS = 6_000;
 
 const failuresOf = (rules: RuleCheck, fit: FitCheck): string[] => [
   ...rules.failures,
@@ -53,11 +57,18 @@ async function checkAndRevise(
 ): Promise<GeneratedPost> {
   const { model, platforms } = c;
   const limits = Object.fromEntries(platforms.map((p) => [p, PLATFORM_LIMITS[p]]));
+  const skipped: FitCheck = { status: "skipped", passed: true, facets: [], offFacets: [] };
+  const left = () => HARD_DEADLINE_MS - (Date.now() - c.started);
   const check = async (p: GeneratedPost) => {
     const rules = checkRules(p, { banned: bannedWords(model), platforms, limits });
-    const fit: FitCheck = model
-      ? await llmScope("judge", { brandId: model.id }, () => judgeFit(textOf(p), model))
-      : { status: "skipped", passed: true, facets: [], offFacets: [] };
+    // The judge tries Gemini first, which can be slow or out of quota; never let it use up the route's 60 s.
+    const fit: FitCheck =
+      model && left() > MIN_JUDGE_MS
+        ? await Promise.race([
+            llmScope("judge", { brandId: model.id }, () => judgeFit(textOf(p), model)),
+            new Promise<FitCheck>((r) => setTimeout(() => r(skipped), left())),
+          ])
+        : skipped;
     return { rules, fit };
   };
   try {
@@ -67,9 +78,13 @@ async function checkAndRevise(
       return { ...post, check: { ...first, revised: false, version: JUDGE_VERSION, text: textOf(post) } };
     }
     const user = buildRevisePrompt(c.prompt.user, post, failuresOf(first.rules, first.fit));
-    const raw = await llmScope(c.feature, { brandId: model?.id, promptVersion: POST_PROMPT_VERSION }, () =>
-      generateStructured(postSchemaFor(model), c.prompt.system, user, c.opts!)
-    );
+    const first_ = { ...post, check: { ...first, revised: false, version: JUDGE_VERSION, text: textOf(post) } };
+    // Same budget for the rewrite: if it can't finish in time, keep the first post with its check.
+    const raw = await Promise.race([
+      llmScope(c.feature, { brandId: model?.id, promptVersion: POST_PROMPT_VERSION }, () => generateStructured(postSchemaFor(model), c.prompt.system, user, c.opts!)),
+      new Promise<null>((r) => setTimeout(() => r(null), Math.max(left() - MIN_JUDGE_MS, 0))),
+    ]).catch(() => null);
+    if (!raw) return first_;
     const next = finalizePost(raw, { model, dna: c.dna, brief: c.brief, platforms });
     if (!next) return { ...post, check: { ...first, revised: false, version: JUDGE_VERSION, text: textOf(post) } };
     const second = await check(next);

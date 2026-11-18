@@ -2,6 +2,7 @@ import { analyseImages, parseJSON } from "../../llm";
 import { imagePixels } from "../../render/assets";
 import { brandColours, kmeans, poolPalettes, PIXELS_VERSION, type Cluster } from "../../measure/pixels";
 import { ImageTagsSchema, type ImageTags } from "../schemas";
+import { TAG_PROMPT } from "../describe";
 import type { Measures } from "../model";
 import type { IngestOutput } from "./ingest";
 import type { StageDefinition } from "./types";
@@ -20,23 +21,25 @@ export interface VisualOutput {
 
 const MAX_PHOTOS = 8;
 
-const TAG_PROMPT = `Each image is a photo from one brand's website, numbered from 0 in the order given.
-Return a JSON array, one object per image:
-[{"index": 0, "subject": "what the photo shows, 3-6 words", "setting": "where, 1-3 words", "style": "photographic style, 2-4 words", "people": "none" | "one" | "group", "textOnImage": true|false, "productVisible": true|false}]`;
-
 /** Measures colours from the logo and photo pixels and tags the photos with one vision call. */
-export const visualStage: StageDefinition<IngestOutput> = {
+export type VisualInput = IngestOutput & {
+  /** Data URI of a logo the owner uploaded. Preferred over the one found on the website. */
+  logoImage?: string;
+};
+
+export const visualStage: StageDefinition<VisualInput> = {
   id: "visual",
   label: "Looking at your logo and photos",
   reads: [],
   writes: [],
   async run(_model, input, { report }) {
     const site = input.website;
-    if (!site) return { patches: [], output: {} };
+    if (!site && !input.logoImage) return { patches: [], output: {} };
 
-    const logo = site.logoUrl ? await imagePixels(site.logoUrl) : null;
+    const logoSource = input.logoImage ?? site?.logoUrl;
+    const logo = logoSource ? await imagePixels(logoSource) : null;
     const logoPalette = logo ? brandColours(kmeans(logo.data, logo.channels, { k: 4 })) : [];
-    if (logoPalette.length) report({ id: "logo-colours", label: "Measured colours from your logo", status: "done", swatches: logoPalette });
+    if (logoPalette.length) report({ id: "logo-colours", label: input.logoImage ? "Measured colours from the logo you uploaded" : "Measured colours from your logo", status: "done", swatches: logoPalette });
 
     const images: VisualImage[] = [];
     const jpegs: Buffer[] = [];

@@ -139,6 +139,8 @@ export const LAYOUT_IDS = [
   "myth-fact",
   "carousel-cover",
   "carousel-slide",
+  "product-cover",
+  "product-slide",
 ] as const;
 export type LayoutId = (typeof LAYOUT_IDS)[number];
 
@@ -169,6 +171,10 @@ export interface BrandPhoto {
   colors?: string[];
   /** What a vision model saw in the photo. */
   tags?: ImageTags;
+  /** "product" photos feed product carousels. Missing means an ordinary lifestyle photo. */
+  role?: "product" | "lifestyle";
+  /** Name (and optional note) of the product in a product photo. */
+  product?: { name: string; note?: string };
 }
 
 export interface Expression {

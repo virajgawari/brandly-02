@@ -13,10 +13,12 @@ export const LAYOUT_LABELS: Record<LayoutId, string> = {
   "myth-fact": "Myth / fact",
   "carousel-cover": "Carousel cover",
   "carousel-slide": "Carousel slide",
+  "product-cover": "Product carousel cover",
+  "product-slide": "Product slide",
 };
 
-/** Layouts a user can turn on/off (carousel slides follow the cover). */
-export const SELECTABLE_LAYOUTS = LAYOUT_IDS.filter((l) => l !== "carousel-slide");
+/** Layouts a user can turn on/off (carousel slides follow the cover; product layouts are made on demand). */
+export const SELECTABLE_LAYOUTS = LAYOUT_IDS.filter((l) => l !== "carousel-slide" && l !== "product-cover" && l !== "product-slide");
 
 /**
  * A sensible kit derived from personality and palette, used until the

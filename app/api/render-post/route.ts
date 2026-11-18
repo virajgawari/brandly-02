@@ -4,7 +4,7 @@ import { chooseLayout, layoutNeedsPhoto } from "@/lib/content/brief";
 import { recentPosts } from "@/lib/content/history";
 import { errorResponse, requireSession } from "@/lib/db/session";
 import { layoutKitOf } from "@/lib/render/kit";
-import { encodeForUpload, generatePhoto, loadVisuals, resolvePhoto, storeRendered, type PhotoRef } from "@/lib/render/media";
+import { encodeForUpload, generatePhoto, loadSlidePhotos, loadVisuals, resolvePhoto, storeRendered, type PhotoRef } from "@/lib/render/media";
 import { renderPost, type RenderSize } from "@/lib/render/render";
 import type { GeneratedPost, RenderedMedia } from "@/lib/types";
 
@@ -43,12 +43,17 @@ export async function POST(req: NextRequest) {
         : chooseLayout(kit, b.post.format, history, { carousel: (b.post.slides?.length ?? 0) >= 2 });
 
     const aspect = size === "1080x1080" ? "1:1" : "4:5";
+    const isProduct = layout === "product-cover";
     let photo: PhotoRef | undefined = typeof b.photo === "object" && b.photo ? b.photo : undefined;
-    if (b.photo === "generate") photo = await generatePhoto(b.post, aspect);
+    if (isProduct) {
+      // Product photos come from the slides themselves; nothing to choose or generate.
+    } else if (b.photo === "generate") photo = await generatePhoto(b.post, aspect);
     else if ((b.photo === undefined || b.photo === "auto") && layoutNeedsPhoto(layout)) photo = await resolvePhoto(model, b.post, history, aspect);
 
     const visuals = await loadVisuals(session, model, photo);
-    const pngs = await renderPost({ model, post: b.post, layout, size, logo: visuals.logo, logoTone: visuals.logoTone, photo: visuals.photo });
+    const slidePhotos = isProduct ? await loadSlidePhotos(session, model, (b.post.slides ?? []).map((s) => s.photoPath)) : undefined;
+    const photos = slidePhotos?.filter((x): x is string => !!x).slice(0, 4);
+    const pngs = await renderPost({ model, post: b.post, layout, size, logo: visuals.logo, logoTone: visuals.logoTone, photo: visuals.photo, photos, slidePhotos });
 
     let rendered: RenderedMedia;
     if (b.store) {

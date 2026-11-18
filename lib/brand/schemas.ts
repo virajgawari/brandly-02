@@ -154,6 +154,11 @@ export const ImageTagSchema = z.object({
   people: z.enum(["none", "one", "group"]).catch("none"),
   textOnImage: z.boolean().catch(false),
   productVisible: z.boolean().catch(false),
+  /** Short product name when a product is visible (max 6 words). */
+  productName: z
+    .string()
+    .catch("")
+    .transform((s) => s.trim().split(/\s+/).slice(0, 6).join(" ")),
 });
 export type ImageTags = z.infer<typeof ImageTagSchema>;
 export const ImageTagsSchema = z.array(ImageTagSchema).catch([]);
@@ -180,7 +185,7 @@ export const GeneratedPostSchema = z.object({
   slides: z
     .array(z.object({ headline: str, body: str }))
     .catch([])
-    .transform((a) => a.filter((s) => s.headline).slice(0, 8)),
+    .transform((a) => a.filter((s) => s.headline).slice(0, 10)),
   visualBrief: VisualBriefSchema.catch({ subject: "", setting: "", lighting: "", composition: "", usesProductPhoto: false }),
   bestTimeToPost: str,
   postType: str,

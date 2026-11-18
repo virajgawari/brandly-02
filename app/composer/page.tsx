@@ -6,7 +6,8 @@ import { useStore } from "@/lib/store";
 import { Button, Input, Textarea, Card, Chip, SectionLabel, PageHeader, EmptyState } from "@/components/ui";
 import PlatformPreview from "@/components/composer/PlatformPreview";
 import Link from "next/link";
-import type { GeneratedPost, Platform, RenderedMedia, TemplateCategory, ScheduledPost } from "@/lib/types";
+import type { GeneratedPost, Platform, ProductRef, RenderedMedia, TemplateCategory, ScheduledPost } from "@/lib/types";
+import { chunkProducts, MAX_CAROUSEL_PRODUCTS } from "@/lib/content/brief";
 import type { LayoutId } from "@/lib/brand/model";
 import { LAYOUT_LABELS, layoutKitOf } from "@/lib/render/kit";
 import { CONTENT_TEMPLATES, PLATFORM_LABELS } from "@/lib/templates";
@@ -43,6 +44,10 @@ export default function ComposerPage() {
   const [rendering, setRendering] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [carouselOn, setCarouselOn] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [batch, setBatch] = useState(0);
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const renderSeq = useRef(0);
   const textTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(textTimer.current), []);
@@ -97,6 +102,33 @@ export default function ComposerPage() {
   };
 
   const brandPhotos = brand?.model?.expression.photos ?? [];
+  const productPhotos = brandPhotos.filter((p) => p.role === "product");
+  const batches = chunkProducts(picked);
+  const productsFor = (n: number): ProductRef[] =>
+    (batches[n] ?? []).flatMap((path) => {
+      const ph = productPhotos.find((p) => p.path === path);
+      return ph ? [{ path, name: ph.product?.name || "Product", note: ph.product?.note }] : [];
+    });
+  const isProductPost = post?.layout === "product-cover";
+
+  const thumbKey = productPhotos.map((p) => p.path).join("|");
+  const brandId = brand?.model?.id;
+  useEffect(() => {
+    if (!carouselOn || !brandId) return;
+    const missing = productPhotos.filter((p) => !thumbs[p.path]);
+    if (!missing.length) return;
+    const q = missing.map((p) => `path=${encodeURIComponent(p.path)}`).join("&");
+    fetch(`/api/brands/${brandId}/photos?${q}`)
+      .then((r) => r.json())
+      .then((d: { photos?: { path: string; url: string }[] }) => setThumbs((t) => ({ ...t, ...Object.fromEntries((d.photos ?? []).map((p) => [p.path, p.url])) })))
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carouselOn, thumbKey, brandId]);
+
+  const togglePicked = (path: string) => {
+    setBatch(0);
+    setPicked((x) => (x.includes(path) ? x.filter((y) => y !== path) : [...x, path]));
+  };
   const nextBrandPhoto = () => {
     if (!post || !brandPhotos.length) return;
     const i = brandPhotos.findIndex((p) => p.path === rendered?.photo?.ref);
@@ -109,8 +141,13 @@ export default function ComposerPage() {
     );
   };
 
-  const generate = async () => {
+  const generate = async (batchIndex = batch) => {
     if (!brand || selectedPlatforms.length === 0) return;
+    const products = carouselOn ? productsFor(batchIndex) : [];
+    if (carouselOn && products.length < 2) {
+      setGenError("Pick at least two products for a carousel.");
+      return;
+    }
     // Asking again for the same request means the last one wasn't good enough.
     if (post && generationId && !saved) track("regenerated", { generationId });
     setGenerating(true);
@@ -133,6 +170,7 @@ export default function ComposerPage() {
         platforms: selectedPlatforms,
         tone: tone === "Brand default" ? undefined : tone,
         additionalContext,
+        ...(products.length ? { products } : {}),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -141,6 +179,12 @@ export default function ComposerPage() {
     if (!data.post) setGenError(data.error ?? "Couldn't write a post. Please try again.");
     setGenerating(false);
     if (data.post) renderPreview(data.post, { photo: "auto" });
+  };
+
+  const nextCarousel = () => {
+    const n = batch + 1;
+    setBatch(n);
+    generate(n);
   };
 
   const schedulePost = async (status: "draft" | "scheduled") => {
@@ -228,6 +272,52 @@ export default function ComposerPage() {
               </div>
             </Card>
 
+            {/* Product carousel */}
+            {productPhotos.length >= 2 && (
+              <Card className="p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <SectionLabel>Product carousel</SectionLabel>
+                  <button
+                    role="switch"
+                    aria-checked={carouselOn}
+                    onClick={() => setCarouselOn((v) => !v)}
+                    className={`text-xs px-3 py-1 rounded-full border ${carouselOn ? "bg-accent/10 border-accent/40 text-accent-light" : "border-border text-text-muted hover:text-text"}`}
+                  >
+                    {carouselOn ? "On" : "Off"}
+                  </button>
+                </div>
+                {carouselOn && (
+                  <>
+                    <p className="text-xs text-text-muted">Cover, one slide per product, then a call to action. Up to {MAX_CAROUSEL_PRODUCTS} products each.</p>
+                    <div className="grid grid-cols-4 gap-2">
+                      {productPhotos.map((p) => {
+                        const on = picked.includes(p.path);
+                        return (
+                          <button
+                            key={p.path}
+                            aria-pressed={on}
+                            onClick={() => togglePicked(p.path)}
+                            title={p.product?.name}
+                            className={`relative aspect-square rounded-lg overflow-hidden border-2 ${on ? "border-accent" : "border-transparent opacity-70 hover:opacity-100"}`}
+                          >
+                            {thumbs[p.path] && <img src={thumbs[p.path]} alt={p.product?.name ?? "Product"} className="w-full h-full object-cover" />}
+                            {on && <span className="absolute top-1 left-1 text-[10px] font-semibold bg-accent text-bg rounded px-1.5">{picked.indexOf(p.path) + 1}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-text-muted">
+                      {picked.length === 0
+                        ? "Tap the products to include."
+                        : batches.length > 1
+                        ? `${picked.length} products make ${batches.length} carousels. Write the first, then use Next carousel.`
+                        : `${picked.length} selected.`}
+                    </p>
+                  </>
+                )}
+              </Card>
+            )}
+
             {/* Platforms */}
             <Card className="p-5">
               <SectionLabel>Platforms</SectionLabel>
@@ -305,7 +395,7 @@ export default function ComposerPage() {
               size="lg"
               loading={generating}
               disabled={selectedPlatforms.length === 0}
-              onClick={generate}
+              onClick={() => generate()}
             >
               {generating ? "Writing…" : "Write post"}
             </Button>
@@ -412,7 +502,7 @@ export default function ComposerPage() {
                       ))}
                     </div>
                   </div>
-                  {kit && (
+                  {kit && !isProductPost && (
                     <div className="flex flex-wrap gap-1.5" role="group" aria-label="Layout">
                       {kit.layouts
                         .filter((l) => l !== "carousel-cover" || (post.slides?.length ?? 0) >= 2)
@@ -433,14 +523,16 @@ export default function ComposerPage() {
                   <Input label="Headline on the image" value={post.headline ?? ""} onChange={(e) => editVisualText("headline", e.target.value)} />
                   <Input label="Supporting line" value={post.subline ?? ""} onChange={(e) => editVisualText("subline", e.target.value)} />
                   <div className="flex gap-2 flex-wrap items-center">
-                    {brandPhotos.length > 0 && (
+                    {brandPhotos.length > 0 && !isProductPost && (
                       <Button size="sm" variant="secondary" disabled={rendering} onClick={nextBrandPhoto}>
                         Use a brand photo
                       </Button>
                     )}
-                    <Button size="sm" variant="secondary" disabled={rendering} onClick={() => renderPreview(post, { photo: "generate" })}>
-                      New AI photo
-                    </Button>
+                    {!isProductPost && (
+                      <Button size="sm" variant="secondary" disabled={rendering} onClick={() => renderPreview(post, { photo: "generate" })}>
+                        New AI photo
+                      </Button>
+                    )}
                     {rendering && <span className="text-xs text-text-muted">Laying out your post…</span>}
                   </div>
                   {post.imagePrompt && (
@@ -519,7 +611,12 @@ export default function ComposerPage() {
                   </Card>
                 )}
 
-                <Button variant="ghost" className="w-full" onClick={generate}>
+                {isProductPost && batch + 1 < batches.length && (
+                  <Button variant="secondary" className="w-full" onClick={nextCarousel}>
+                    Next carousel ({batch + 2} of {batches.length}) →
+                  </Button>
+                )}
+                <Button variant="ghost" className="w-full" onClick={() => generate()}>
                   ↺ Regenerate
                 </Button>
               </>

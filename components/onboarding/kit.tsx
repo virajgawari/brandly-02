@@ -16,6 +16,7 @@ export function OnboardingShell({
   primary,
   secondary,
   wide = false,
+  hero = false,
 }: {
   step?: number;
   total?: number;
@@ -26,9 +27,11 @@ export function OnboardingShell({
   primary?: { label: string; onClick: () => void; disabled?: boolean; loading?: boolean };
   secondary?: { label: string; onClick: () => void };
   wide?: boolean;
+  /** Opening screen: one big question, centred, more room. Enter submits the primary action. */
+  hero?: boolean;
 }) {
   return (
-    <div className={clsx("mx-auto px-4 sm:px-6 py-8 sm:py-12", wide ? "max-w-5xl" : "max-w-xl")}>
+    <div className={clsx("mx-auto px-4 sm:px-6", hero ? "max-w-xl pt-16 sm:pt-28 pb-12 text-center" : "py-8 sm:py-12", !hero && (wide ? "max-w-5xl" : "max-w-xl"))}>
       <div className="flex items-center justify-between h-8 mb-6">
         {onBack ? (
           <button onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text">
@@ -48,11 +51,22 @@ export function OnboardingShell({
           </div>
         ) : null}
       </div>
-      <h1 className="text-2xl sm:text-[28px] font-semibold tracking-tight leading-tight">{title}</h1>
+      <h1 className={clsx("font-semibold tracking-tight leading-tight", hero ? "text-3xl sm:text-4xl" : "text-2xl sm:text-[28px]")}>{title}</h1>
       {subtitle && <p className="mt-2 text-text-muted text-[15px] leading-relaxed">{subtitle}</p>}
-      <div className="mt-8 animate-fade-up">{children}</div>
+      <div
+        className={clsx("animate-fade-up", hero ? "mt-10 text-left" : "mt-8")}
+        onKeyDown={(e) => {
+          // Enter in a text box moves on; chips, cards and textareas keep their own Enter.
+          if (e.key === "Enter" && !e.shiftKey && e.target instanceof HTMLInputElement && e.target.type === "text" && primary && !primary.disabled && !primary.loading) {
+            e.preventDefault();
+            primary.onClick();
+          }
+        }}
+      >
+        {children}
+      </div>
       {(primary || secondary) && (
-        <div className="mt-10 flex items-center justify-between gap-3 flex-wrap">
+        <div className={clsx("mt-10 flex items-center gap-3 flex-wrap", hero ? "justify-center" : "justify-between")}>
           {secondary ? (
             <button onClick={secondary.onClick} className="text-sm text-text-muted hover:text-text underline-offset-4 hover:underline">
               {secondary.label}

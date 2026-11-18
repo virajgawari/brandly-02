@@ -18,6 +18,10 @@ export interface RenderInput {
   logo?: string;
   logoTone?: "light" | "dark";
   photo?: string;
+  /** Product carousel: cover collage photos. */
+  photos?: string[];
+  /** Product carousel: one photo per slide (index matches post.slides; cover and CTA are undefined). */
+  slidePhotos?: (string | undefined)[];
 }
 
 /** Renders one PNG per slide (one for a single-image post). */
@@ -40,7 +44,24 @@ export async function renderPost(input: RenderInput): Promise<Buffer[]> {
   const headline = (post.headline || post.caption?.split(/[.!?\n]/)[0] || model.name).slice(0, 140);
 
   const frames: LayoutProps[] = [];
-  if (input.layout === "carousel-cover" && post.slides?.length) {
+  const frameLayouts: LayoutId[] = [];
+  if (input.layout === "product-cover" && (post.slides?.length ?? 0) >= 3) {
+    const slides = post.slides!;
+    const total = slides.length;
+    slides.forEach((s, i) => {
+      const slide = { index: i + 1, total };
+      if (i === 0) {
+        frameLayouts.push("product-cover");
+        frames.push({ ...base, headline: s.headline || headline, subline: post.subline, photos: input.photos, photo: input.photos?.[0] ?? input.photo, slide });
+      } else if (i === total - 1) {
+        frameLayouts.push("carousel-slide");
+        frames.push({ ...base, headline: s.headline, subline: s.body, cta: post.cta, slide, noNumber: true });
+      } else {
+        frameLayouts.push("product-slide");
+        frames.push({ ...base, headline: s.headline, subline: s.body, photo: input.slidePhotos?.[i], slide });
+      }
+    });
+  } else if (input.layout === "carousel-cover" && post.slides?.length) {
     const slides = post.slides;
     const total = slides.length;
     frames.push({ ...base, headline: slides[0].headline || headline, subline: slides[0].body || post.subline, photo: input.photo, slide: { index: 1, total } });
@@ -51,7 +72,7 @@ export async function renderPost(input: RenderInput): Promise<Buffer[]> {
 
   return Promise.all(
     frames.map(async (props, i) => {
-      const Layout = LAYOUTS[i === 0 ? input.layout : "carousel-slide"];
+      const Layout = LAYOUTS[frameLayouts[i] ?? (i === 0 ? input.layout : "carousel-slide")];
       const res = new ImageResponse(<Layout {...props} />, {
         width,
         height,

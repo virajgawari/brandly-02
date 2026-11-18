@@ -3,7 +3,7 @@
 // option wins, so consecutive posts differ in shape, not just in words.
 import type { BrandModel, LayoutId, LayoutKit } from "@/lib/brand/model";
 import { MOMENT_LABELS } from "@/lib/brand/audience";
-import type { TemplateCategory } from "@/lib/types";
+import type { ProductRef, TemplateCategory } from "@/lib/types";
 import type { ContentHistory } from "./history";
 
 export interface PostFormat {
@@ -21,9 +21,34 @@ export interface PostFormat {
   carousel?: boolean;
   /** What the visual fields must contain. */
   visualText: string;
+  /** Only used when asked for (never picked in normal rotation). */
+  manual?: boolean;
 }
 
+/** Products shown in one carousel: cover + one slide each + CTA = at most 10 slides. */
+export const MAX_CAROUSEL_PRODUCTS = 8;
+
+/** Splits a product list into carousels of at most MAX_CAROUSEL_PRODUCTS. */
+export function chunkProducts<T>(list: T[], size = MAX_CAROUSEL_PRODUCTS): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+
+export const PRODUCT_CAROUSEL: PostFormat = {
+  id: "product-carousel",
+  label: "Product carousel",
+  instruction: "Show the brand's products one by one, so a reader can swipe through the range. Be specific about what each product is for.",
+  templates: [],
+  layouts: ["product-cover"],
+  usesProductPhoto: true,
+  carousel: true,
+  manual: true,
+  visualText: "headline = a cover line that names the range, max 8 words. subline = who it is for, max 10 words.",
+};
+
 export const FORMATS: PostFormat[] = [
+  PRODUCT_CAROUSEL,
   {
     id: "myth-vs-fact",
     label: "Myth vs fact",
@@ -194,6 +219,8 @@ export interface PostBrief {
   entryPoint?: string;
   moment?: string;
   carousel: boolean;
+  /** Product carousel only: the products, in slide order. */
+  products?: ProductRef[];
 }
 
 /** Position in history (0 = newest) of the first post where `get` matches, or -1. */
@@ -221,14 +248,16 @@ export function pickBrief(
   model: BrandModel | undefined,
   history: ContentHistory,
   template: TemplateCategory | undefined,
-  opts: { allowCarousel?: boolean; rand?: () => number } = {}
+  opts: { allowCarousel?: boolean; rand?: () => number; products?: ProductRef[] } = {}
 ): PostBrief {
   const rand = opts.rand ?? Math.random;
   const window = Math.max(history.posts.length, 6);
-  const fitting = template ? FORMATS.filter((f) => f.templates.includes(template)) : FORMATS;
-  const pool = fitting.length ? fitting : FORMATS;
+  const regular = FORMATS.filter((f) => !f.manual);
+  const fitting = template ? regular.filter((f) => f.templates.includes(template)) : regular;
+  const pool = fitting.length ? fitting : regular;
+  const products = opts.products?.slice(0, MAX_CAROUSEL_PRODUCTS);
 
-  const format = pickLeastRecent(
+  const format = products?.length ? PRODUCT_CAROUSEL : pickLeastRecent(
     pool,
     (f) => recencyScore(lastUsed(history, (p) => p.format, f.id), window) * 2 + (history.dislikes.formats[f.id] ?? 0) * 3,
     rand
@@ -250,6 +279,7 @@ export function pickBrief(
   const moment = moments.length ? MOMENT_LABELS[moments[n % moments.length]] : undefined;
 
   const recentCarousel = history.posts.slice(0, 2).some((p) => p.layout === "carousel-cover");
+  if (products?.length) return { format, hook, pillar, entryPoint, moment, carousel: true, products };
   const carousel = !!(opts.allowCarousel && format.carousel && !recentCarousel);
 
   return { format, hook, pillar, entryPoint, moment, carousel };
@@ -265,7 +295,13 @@ export function briefBlock(b: PostBrief): string {
     b.entryPoint && `- SITUATION TO TIE IT TO: ${b.entryPoint}`,
     b.moment && `- MOMENT: ${b.moment}`,
     `- VISUAL TEXT: ${b.format.visualText}`,
-    b.carousel
+    b.products?.length
+      ? [
+          `- PRODUCTS (in this order):`,
+          ...b.products.map((p, i) => `  ${i + 1}. ${p.name}${p.note ? ` (${p.note})` : ""}`),
+          `- CAROUSEL: write "slides" with exactly ${b.products.length + 2} slides. Slide 1 is the cover: a headline (max 8 words) for the whole range. Slides 2-${b.products.length + 1} are the products in the order above: headline = the product name, body = ONE benefit, max 14 words, using only what the name and note say (no invented specs, prices or claims). The last slide's headline is the call to action (max 6 words).`,
+        ].join("\n")
+      : b.carousel
       ? `- CAROUSEL: write "slides" with 4-6 slides. Slide 1 is the cover (the headline). Each other slide has a headline (max 8 words) and an optional body (max 20 words).`
       : `- Single image post. "slides" must be an empty array.`,
   ]
@@ -276,8 +312,11 @@ export function briefBlock(b: PostBrief): string {
 // ── Layout choice ──────────────────────────────────────────────────────────
 const PHOTO_LAYOUTS: LayoutId[] = ["photo-band", "full-bleed", "split", "framed"];
 
+/** Layouts only used for carousels; never offered in the kit or picked for normal posts. */
+export const SPECIAL_LAYOUTS: LayoutId[] = ["carousel-cover", "carousel-slide", "product-cover", "product-slide"];
+
 export function layoutNeedsPhoto(id: LayoutId): boolean {
-  return PHOTO_LAYOUTS.includes(id) || id === "carousel-cover";
+  return PHOTO_LAYOUTS.includes(id) || id === "carousel-cover" || id === "product-cover";
 }
 
 /**
@@ -288,11 +327,12 @@ export function chooseLayout(
   kit: LayoutKit,
   formatId: string | undefined,
   history: ContentHistory,
-  opts: { carousel?: boolean; rand?: () => number } = {}
+  opts: { carousel?: boolean; product?: boolean; rand?: () => number } = {}
 ): LayoutId {
+  if (opts.product) return "product-cover";
   if (opts.carousel) return "carousel-cover";
   const rand = opts.rand ?? Math.random;
-  const allowed: LayoutId[] = kit.layouts.filter((l) => l !== "carousel-slide" && l !== "carousel-cover");
+  const allowed: LayoutId[] = kit.layouts.filter((l) => !SPECIAL_LAYOUTS.includes(l));
   const format = FORMATS.find((f) => f.id === formatId);
   const recent = history.posts.slice(0, 2).map((p) => p.layout);
   const preferred = (format?.layouts ?? []).filter((l) => allowed.includes(l));

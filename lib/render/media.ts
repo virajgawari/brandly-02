@@ -58,7 +58,15 @@ export async function loadVisuals(session: Session | null, model: BrandModel, ph
   return { photo: photoUri, logo: logoUri, logoTone: await imageTone(logoUri) };
 }
 
-const SIGN_SECONDS = 60 * 60 * 24 * 30;
+/** Product photos (images bucket) as data URIs, in order; missing ones come back undefined. */
+export async function loadSlidePhotos(session: Session | null, model: BrandModel, paths: (string | undefined)[]): Promise<(string | undefined)[]> {
+  if (!session) return paths.map(() => undefined);
+  const kit = layoutKitOf(model)!;
+  const duotone = kit.photoTreatment === "duotone" ? model.expression.tokens.color.primary.$value : undefined;
+  return Promise.all(paths.map((p) => (p ? imageFromStorage(session.db, "images", p, { maxSide: 1400, duotone }) : Promise.resolve(undefined))));
+}
+
+const SIGN_SECONDS =60 * 60 * 24 * 30;
 
 export interface EncodedImage {
   buf: Buffer;

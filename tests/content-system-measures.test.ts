@@ -21,7 +21,7 @@ describe("contentSystemStage", () => {
       pixels: { version: "t", logoPalette: [], photoPalette: ["#EDDDC5"] },
     };
     vi.mocked(generateStructured).mockResolvedValue(ContentSystemSchema.parse({ pillars: ["Origin stories"], cites: { pillars: ["E1"] } }));
-    const photoInsights = [{ url: "u", colors: [], tags: { index: 0, subject: "pour-over cup", setting: "cafe", style: "", people: "none" as const, textOnImage: false, productVisible: true } }];
+    const photoInsights = [{ url: "u", colors: [], tags: { index: 0, subject: "pour-over cup", setting: "cafe", style: "", people: "none" as const, textOnImage: false, productVisible: true, productName: "" } }];
     const r = await contentSystemStage.run(m, { photoInsights }, { report: vi.fn() });
     const prompt = vi.mocked(generateStructured).mock.calls[0][2] as string;
     expect(prompt).toContain("single-origin");

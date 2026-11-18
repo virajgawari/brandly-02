@@ -64,22 +64,22 @@ async function checkAndRevise(
     const first = await check(post);
     const ok = first.rules.passed && first.fit.passed;
     if (ok || !c.opts || Date.now() - c.started > REVISE_DEADLINE_MS) {
-      return { ...post, check: { ...first, revised: false, version: JUDGE_VERSION } };
+      return { ...post, check: { ...first, revised: false, version: JUDGE_VERSION, text: textOf(post) } };
     }
     const user = buildRevisePrompt(c.prompt.user, post, failuresOf(first.rules, first.fit));
     const raw = await llmScope(c.feature, { brandId: model?.id, promptVersion: POST_PROMPT_VERSION }, () =>
       generateStructured(postSchemaFor(model), c.prompt.system, user, c.opts!)
     );
     const next = finalizePost(raw, { model, dna: c.dna, brief: c.brief, platforms });
-    if (!next) return { ...post, check: { ...first, revised: false, version: JUDGE_VERSION } };
+    if (!next) return { ...post, check: { ...first, revised: false, version: JUDGE_VERSION, text: textOf(post) } };
     const second = await check(next);
     const better =
       Number(second.rules.passed) !== Number(first.rules.passed)
         ? second.rules.passed
         : (second.fit.fit ?? 0) >= (first.fit.fit ?? 0);
     return better
-      ? { ...next, check: { ...second, revised: true, version: JUDGE_VERSION } }
-      : { ...post, check: { ...first, revised: true, version: JUDGE_VERSION } };
+      ? { ...next, check: { ...second, revised: true, version: JUDGE_VERSION, text: textOf(next) } }
+      : { ...post, check: { ...first, revised: true, version: JUDGE_VERSION, text: textOf(post) } };
   } catch (e) {
     console.warn("[generate] check failed:", String(e instanceof Error ? e.message : e).slice(0, 160));
     return post;

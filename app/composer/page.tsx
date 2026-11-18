@@ -445,7 +445,7 @@ export default function ComposerPage() {
                   imageLoading={rendering}
                 />
 
-                {post.check && <Scorecard check={post.check} />}
+                {post.check && <Scorecard check={post.check} text={[post.headline, post.caption].filter(Boolean).join("\n")} />}
 
                 {/* All captions */}
                 {selectedPlatforms.length > 1 && (

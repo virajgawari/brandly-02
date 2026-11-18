@@ -110,6 +110,8 @@ export interface PostCheck {
   /** True when the post was rewritten once after failing a check. */
   revised: boolean;
   version: string;
+  /** Headline and caption the check ran on; the composer flags the check stale when they change. */
+  text?: string;
 }
 
 export interface ScheduledPost {

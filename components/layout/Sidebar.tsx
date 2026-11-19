@@ -204,6 +204,8 @@ export function MobileNav() {
   const [more, setMore] = useState(false);
   const moreActive = MOBILE_MORE.some((n) => isActive(pathname, n.href));
   const tab = "flex flex-col items-center justify-center gap-0.5 h-14 text-[11px]";
+  // Setup is a focused flow; no tab bar until the brand is ready.
+  if (pathname?.startsWith("/onboarding")) return null;
   return (
     <>
       {more && (

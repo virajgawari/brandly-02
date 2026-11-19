@@ -100,6 +100,7 @@ export async function loadLearnPosts(s: Session, brandId: string, windowDays: nu
     caption: r.content?.caption,
     ratings: ratings.get(r.id),
     engagement: engagement.get(r.id),
+    fit: r.content?.check?.fit?.fit,
   }));
   return { posts, withMetrics: engagement.size };
 }

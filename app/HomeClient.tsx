@@ -5,6 +5,7 @@ import { addDays, format, isAfter, isBefore, parseISO } from "date-fns";
 import { ArrowRight, Check, Sprout, Store } from "lucide-react";
 import clsx from "clsx";
 import InsightsCard from "@/components/agent/InsightsCard";
+import ScoreboardCard from "@/components/agent/ScoreboardCard";
 import AppShell from "@/components/layout/AppShell";
 import { Button, Card } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/icons";
@@ -148,6 +149,7 @@ export default function HomeClient() {
             </Card>
 
             <InsightsCard brandId={brand.id} />
+            <ScoreboardCard brandId={brand.id} />
           </div>
 
           <div className="space-y-6">

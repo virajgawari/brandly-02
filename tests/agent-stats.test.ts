@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SETTINGS, findPatterns, learnedBlock, metricValue, normaliseSettings, topFindings, type LearnPost } from "@/lib/agent/stats";
+import { DEFAULT_SETTINGS, findPatterns, learnedBlock, metricValue, normaliseSettings, scoreboard, topFindings, type LearnPost } from "@/lib/agent/stats";
 
 const post = (i: number, over: Partial<LearnPost>): LearnPost => ({ id: `p${i}`, status: "published", ...over });
 const many = (n: number, start: number, over: Partial<LearnPost>) => Array.from({ length: n }, (_, i) => post(start + i, over));
@@ -79,5 +79,24 @@ describe("topFindings / learnedBlock / normaliseSettings", () => {
   });
   it("clamps bad settings", () => {
     expect(normaliseSettings({ minSample: -4, minLift: 99, windowDays: Number.NaN })).toEqual({ ...DEFAULT_SETTINGS, minSample: 2, minLift: 3 });
+  });
+});
+
+describe("scoreboard", () => {
+  const mk = (i: number, fit: number, engagement?: number): LearnPost => ({ id: `p${i}`, status: "published", fit, engagement });
+  it("needs enough posts with both fit and engagement", () => {
+    const s = scoreboard([mk(1, 80, 0.05), mk(2, 60), mk(3, 70)]);
+    expect(s.verdict).toBe("not-enough");
+    expect(s.scored).toBe(1);
+    expect(s.awaitingMetrics).toBe(2);
+  });
+  it("says up when higher fit gets more engagement", () => {
+    const s = scoreboard([50, 55, 60, 70, 80, 90].map((f, i) => mk(i, f, f / 1000)));
+    expect(s.verdict).toBe("up");
+    expect(s.highFit!).toBeGreaterThan(s.lowFit!);
+  });
+  it("says down when it is inverted", () => {
+    const s = scoreboard([50, 55, 60, 70, 80, 90].map((f, i) => mk(i, f, (100 - f) / 1000)));
+    expect(s.verdict).toBe("down");
   });
 });

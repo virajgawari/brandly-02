@@ -25,11 +25,11 @@ export const CampaignBriefSchema = z.object({
 export type CampaignBrief = z.infer<typeof CampaignBriefSchema>;
 export type CampaignPost = z.infer<typeof CampaignPostSchema>;
 
-export const CAMPAIGN_PROMPT_VERSION = "campaign@1";
+export const CAMPAIGN_PROMPT_VERSION = "campaign@2";
 
 export const CAMPAIGN_SYSTEM = `You plan a short social media campaign for one brand from the owner's one-line request.
 Reply with a brief: "goal" (what the campaign should achieve), "offer" (only if the request states one, else ""), "product" (the product or service it centres on, else ""), "ratio" (one of ${CAMPAIGN_RATIOS.join(", ")}; use "9:16" for stories or reels, else "4:5"), and exactly ${CAMPAIGN_POSTS} "posts".
-The posts must differ in angle and template and build on each other (tease, reveal, proof, last call). Use only facts you are given; never invent prices, discounts, dates or events.
+The posts must differ in angle and template and build on each other (tease, reveal, proof, last call). Use only facts you are given; never invent prices, discounts, dates, events, people or customer quotes. Do not plan a post that needs a testimonial or a number you were not given.
 "title" is 3 to 8 words, "pitch" is one plain sentence. "template" must be one of: ${TEMPLATE_IDS.join(", ")}.
 Reply as {"goal":"","offer":"","product":"","ratio":"4:5","posts":[{"title":"","pitch":"","template":""}]}.`;
 

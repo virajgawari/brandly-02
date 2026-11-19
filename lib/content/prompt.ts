@@ -9,13 +9,14 @@ import { AI_CLICHES, briefBlock, type PostBrief } from "./brief";
 import { historyBlock, type ContentHistory } from "./history";
 import { imagePromptFromBrief } from "./visual";
 
-export const POST_PROMPT_VERSION = "generate-post@3";
+export const POST_PROMPT_VERSION = "generate-post@4";
 /** Higher than the default 0.7: posts should vary, brand facts come from the context. */
 export const POST_TEMPERATURE = 0.9;
 
 export const POST_SYSTEM = `You are a senior social media copywriter for one brand.
 You write posts that sound like the brand's own people wrote them: specific, concrete, plain words.
-You follow the POST BRIEF exactly. You never sound like generic AI marketing copy.`;
+You follow the POST BRIEF exactly. You never sound like generic AI marketing copy.
+Use only facts that appear in the brand context or the request. Never invent people, customer quotes, numbers, brew or process times, quantities, limited runs, product names, prices, dates or awards. When a detail is missing, write around it instead of making one up.`;
 
 export function brandContextOf(model?: BrandModel, dna?: BrandDNA): string {
   return model ? toPromptContext(model) : `Brand DNA:\n${JSON.stringify(dna ?? {}, null, 2)}`;

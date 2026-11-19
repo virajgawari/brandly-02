@@ -25,11 +25,11 @@ import type { Direction } from "@/lib/brand/stages/directions";
 type Door = "analyse" | "build" | "refine";
 type Step =
   | "website" | "instagram" | "files" | "assets" | "name" | "reading" | "confirm"
-  | "offering" | "business" | "markets"
-  | "audience" | "why" | "personality" | "directions" | "finishing" | "ready";
+  | "offering" | "business"
+  | "audience" | "personality" | "directions" | "finishing" | "ready";
 
-const INTERVIEW: Step[] = ["audience", "why", "personality", "directions"];
-const BUILD_STEPS: Step[] = ["name", "offering", "business", "markets", ...INTERVIEW, "assets"];
+const INTERVIEW: Step[] = ["audience", "personality", "directions"];
+const BUILD_STEPS: Step[] = ["name", "offering", "business", ...INTERVIEW, "assets"];
 
 interface Answers {
   offering: string;
@@ -333,7 +333,7 @@ export default function OnboardingPage() {
               aria-pressed={door === "refine"}
               className={clsx("underline-offset-4 hover:underline", door === "refine" && "text-text font-medium")}
             >
-              {door === "refine" && <Check size={14} className="inline mr-1 -mt-0.5" />}I have a website, but no real brand yet
+              {door === "refine" && <Check size={14} className="inline mr-1 -mt-0.5" />}My brand is new, help me shape it
             </button>
           </div>
           <p className="mt-8 mb-3 text-xs text-text-muted text-center">No website?</p>
@@ -501,8 +501,8 @@ export default function OnboardingPage() {
           total={flow.length}
           title="How does your business work?"
           onBack={goBack()}
-          primary={{ label: "Continue", onClick: () => setStep("markets") }}
-          secondary={{ label: "Skip", onClick: () => setStep("markets") }}
+          primary={{ label: "Continue", onClick: () => setStep("audience") }}
+          secondary={{ label: "Skip for now", onClick: () => setStep("audience") }}
         >
           <Question title="Which industry fits best?">
             <Select options={INDUSTRIES} value={answers.industry ?? ""} onChange={(v) => set("industry", (v || undefined) as Industry | undefined)} />
@@ -516,32 +516,6 @@ export default function OnboardingPage() {
         </OnboardingShell>
       )}
 
-      {step === "markets" && (
-        <OnboardingShell
-          step={stepNo}
-          total={flow.length}
-          title="Where are your customers?"
-          onBack={goBack()}
-          primary={{ label: "Continue", onClick: () => setStep("audience") }}
-          secondary={{ label: "Skip", onClick: () => setStep("audience") }}
-        >
-          <Question title="Which country or countries?">
-            <Input value={answers.countries} onChange={(e) => set("countries", e.target.value)} placeholder="India" />
-          </Question>
-          <Question title="Where are most customers?" hint="Pick all that apply">
-            <ChipGroup
-              multi
-              options={(Object.keys(CITY_TIER_LABELS) as CityTier[]).map((v) => ({ value: v, label: CITY_TIER_LABELS[v] }))}
-              value={answers.cityTiers}
-              onChange={(v) => set("cityTiers", v)}
-            />
-          </Question>
-          <Question title="Which language should posts be in?" hint="Pick all that apply">
-            <ChipGroup multi options={LANGUAGE_OPTIONS.map((l) => ({ value: l, label: l }))} value={answers.languages} onChange={(v) => set("languages", v)} />
-          </Question>
-        </OnboardingShell>
-      )}
-
       {step === "audience" && (
         <OnboardingShell
           step={stepNo}
@@ -549,8 +523,8 @@ export default function OnboardingPage() {
           title="Who buys from you?"
           subtitle={door === "refine" ? "We guessed from your website. Fix anything that's off." : "This shapes your colours, voice and where you post."}
           onBack={goBack()}
-          primary={{ label: "Continue", onClick: () => setStep("why") }}
-          secondary={{ label: "Not sure, let Brandly suggest", onClick: () => setStep("why") }}
+          primary={{ label: "Continue", onClick: () => setStep("personality") }}
+          secondary={{ label: "Skip for now", onClick: () => setStep("personality") }}
         >
           <Question title="Mostly…">
             <ChipGroup options={GENDER_OPTIONS} value={answers.gender} onChange={(v) => set("gender", v)} />
@@ -564,34 +538,13 @@ export default function OnboardingPage() {
         </OnboardingShell>
       )}
 
-      {step === "why" && (
-        <OnboardingShell
-          step={stepNo}
-          total={flow.length}
-          title="Why and when do people buy?"
-          onBack={goBack()}
-          primary={{ label: "Continue", onClick: () => setStep("personality") }}
-          secondary={{ label: "Not sure, let Brandly suggest", onClick: () => setStep("personality") }}
-        >
-          <Question title="Why do they buy from you?" hint="Pick up to 2">
-            <ChipGroup multi max={2} options={MOTIVATIONS.map((m) => ({ value: m, label: MOTIVATION_LABELS[m] }))} value={answers.motivations} onChange={(v) => set("motivations", v)} />
-          </Question>
-          <Question title="When do they think of you?" hint="Pick all that apply">
-            <ChipGroup multi options={MOMENTS.map((m) => ({ value: m, label: MOMENT_LABELS[m] }))} value={answers.moments} onChange={(v) => set("moments", v)} />
-          </Question>
-          <Question title="Brands you admire or compete with" hint="Optional. Separate with commas.">
-            <Input value={answers.competitors} onChange={(e) => set("competitors", e.target.value)} placeholder="e.g. Chaayos, Blue Tokai" />
-          </Question>
-        </OnboardingShell>
-      )}
-
       {step === "personality" && (
         <OnboardingShell
           step={stepNo}
           total={flow.length}
           title="Pick the one that's more you"
           subtitle="Go with your gut. Skip any that don't fit."
-          onBack={() => setStep("why")}
+          onBack={() => setStep("audience")}
           primary={{ label: "Show me directions", onClick: () => designDirections(), disabled: personalityAnswered < 3 }}
         >
           <div className="space-y-6">

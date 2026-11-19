@@ -26,7 +26,7 @@ type Door = "analyse" | "build" | "refine";
 type Step =
   | "website" | "instagram" | "files" | "assets" | "name" | "reading" | "confirm"
   | "offering" | "business" | "markets"
-  | "audience" | "why" | "personality" | "directions" | "finishing";
+  | "audience" | "why" | "personality" | "directions" | "finishing" | "ready";
 
 const INTERVIEW: Step[] = ["audience", "why", "personality", "directions"];
 const BUILD_STEPS: Step[] = ["name", "offering", "business", "markets", ...INTERVIEW, "assets"];
@@ -224,7 +224,8 @@ export default function OnboardingPage() {
       { website: websiteUrl.trim() || undefined, instagram: igHandle.trim() || undefined, pdfName: pdf?.name },
       { source: "stage", stageId: "pipeline:analyse" }
     );
-    router.push("/brand?welcome=1");
+    setRunning(false);
+      setStep("ready");
   };
 
   // ── Door B: answers → model ─────────────────────────────────────────────
@@ -296,7 +297,8 @@ export default function OnboardingPage() {
           keepalive: true,
         }).catch(() => undefined)
       );
-      router.push("/brand?welcome=1");
+      setRunning(false);
+      setStep("ready");
     } catch (err) {
       setRunning(false);
       setError(err instanceof Error ? err.message : String(err));
@@ -701,6 +703,18 @@ export default function OnboardingPage() {
               ))}
             </div>
           )}
+        </OnboardingShell>
+      )}
+
+      {step === "ready" && (
+        <OnboardingShell
+          hero
+          title={`${runName || "Your brand"} is ready`}
+          subtitle="Brandly learned your look and voice. Let's make your first post."
+          primary={{ label: "Make my first post", onClick: () => router.push("/composer?first=1") }}
+          secondary={{ label: "Review your brand first", onClick: () => router.push("/brand?welcome=1") }}
+        >
+          <p className="text-sm text-text-muted text-center">It takes about half a minute. You can change anything afterwards.</p>
         </OnboardingShell>
       )}
 

@@ -192,6 +192,18 @@ export default function ComposerPage() {
     setIdeasLoading(false);
   };
 
+  // Arriving from onboarding (?first=1): write the first post straight away.
+  const firstRun = useRef(false);
+  useEffect(() => {
+    if (firstRun.current || !brand?.model) return;
+    if (new URLSearchParams(window.location.search).get("first") !== "1") return;
+    firstRun.current = true;
+    window.history.replaceState(null, "", "/composer");
+    const product = brand.model.content.productsServices[0];
+    generate(0, { template: "product_launch", topic: product ? `Introduce ${product}` : "" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brand?.model]);
+
   const pickIdea = (i: PostIdea) => {
     setSelectedTemplate(i.template as TemplateCategory);
     setTopic(`${i.title}. ${i.pitch}`);

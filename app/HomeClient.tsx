@@ -12,7 +12,7 @@ import { PlatformIcon } from "@/components/ui/icons";
 import { useStore } from "@/lib/store";
 
 export default function HomeClient() {
-  const { brands, getActiveBrand, posts, automationRules } = useStore();
+  const { brands, getActiveBrand, posts } = useStore();
   const brand = getActiveBrand();
   const brandId = brand?.id;
   // null = not loaded yet (or the products table is unavailable): the checklist item stays unchecked.
@@ -61,17 +61,11 @@ export default function HomeClient() {
     .filter((p) => p.status === "scheduled" && isAfter(parseISO(p.scheduledAt), now) && isBefore(parseISO(p.scheduledAt), weekEnd))
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
   const drafts = brandPosts.filter((p) => p.status === "draft");
-  const rules = automationRules.filter((r) => r.brandId === brand.id);
-  const audience = brand.model?.strategy.audience;
-  const audienceConfirmed = !!brand.model && Object.entries(brand.model.meta).some(([p, m]) => p.startsWith("strategy.audience") && m.source === "user");
 
   const checklist = [
-    { done: true, label: "Set up your brand", href: "/brand" },
-    { done: audienceConfirmed || !!audience?.ageGroups.length, label: "Confirm who your audience is", href: "/brand#section-strategy.audience" },
-    { done: (productCount ?? 0) > 0, label: "Add your products", href: "/catalog" },
-    { done: brandPosts.length > 0, label: "Write your first post", href: "/composer" },
+    { done: brandPosts.length > 0, label: "Make your first post", href: "/composer" },
     { done: brandPosts.some((p) => p.status === "scheduled" || p.status === "published"), label: "Schedule a post", href: "/calendar" },
-    { done: rules.length > 0, label: "Turn on one automation", href: "/automation" },
+    { done: (productCount ?? 0) > 0, label: "Add your products", href: "/catalog" },
   ];
   const remaining = checklist.filter((c) => !c.done).length;
   const colors = Object.values(brand.dna.colors);

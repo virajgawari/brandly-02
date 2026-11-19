@@ -101,7 +101,7 @@ export async function storeLogo(s: Session, brandId: string, url: string): Promi
 export async function attachSourceMedia(
   s: Session,
   model: BrandModel,
-  found: { photoUrls?: string[]; screenshots?: string[]; logoUrl?: string; insights?: { url: string; colors: string[]; tags?: BrandPhoto["tags"] }[] }
+  found: { photoUrls?: string[]; screenshots?: string[]; screenshotSource?: "instagram" | "upload"; logoUrl?: string; insights?: { url: string; colors: string[]; tags?: BrandPhoto["tags"] }[] }
 ): Promise<BrandModel> {
   const have = model.expression.photos ?? [];
   const room = Math.max(0, Math.min(12, MAX_BRAND_PHOTOS - have.length));
@@ -124,7 +124,7 @@ export async function attachSourceMedia(
   const shots: BrandPhoto[] = [];
   for (const b64 of (found.screenshots ?? []).slice(0, Math.max(0, room - fromSite.length))) {
     try {
-      shots.push(await saveBrandPhoto(s, model.id, Buffer.from(b64, "base64"), "instagram"));
+      shots.push(await saveBrandPhoto(s, model.id, Buffer.from(b64, "base64"), found.screenshotSource ?? "instagram"));
     } catch (err) {
       console.warn("[brand photos]", err instanceof Error ? err.message : err);
     }

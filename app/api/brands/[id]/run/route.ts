@@ -54,12 +54,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // Keep real photos and the logo in Supabase so posts can use them later.
         if (session && pipeline !== "build") {
           const input = body.input ?? {};
-          const shots = input.imageSource === "instagram" || input.imageSource === "upload" ? (input.images as string[] | undefined) : undefined;
+          const shots = input.imageSource === "instagram" || input.imageSource === "upload" || input.imageSource === "pdf" ? (input.images as string[] | undefined) : undefined;
           try {
             const before = result.model.expression.photos?.length ?? 0;
             result.model = await attachSourceMedia(session, result.model, {
               photoUrls: result.output.photoUrls as string[] | undefined,
               screenshots: shots,
+              screenshotSource: input.imageSource === "instagram" ? "instagram" : "upload",
               insights: result.output.photoInsights as { url: string; colors: string[]; tags?: BrandPhoto["tags"] }[] | undefined,
             });
             const saved = (result.model.expression.photos?.length ?? 0) - before;

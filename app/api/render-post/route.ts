@@ -4,7 +4,7 @@ import { chooseLayout, layoutNeedsPhoto } from "@/lib/content/brief";
 import { recentPosts } from "@/lib/content/history";
 import { errorResponse, requireSession } from "@/lib/db/session";
 import { layoutKitOf } from "@/lib/render/kit";
-import { encodeForUpload, fillSlidePhotos, generatePhoto, generateSlidePhotos, loadPhotoRefs, loadSlidePhotos, loadVisuals, pickBrandPhoto, resolvePhoto, storeRendered, type PhotoRef } from "@/lib/render/media";
+import { encodeForUpload, fillSlidePhotos, generatePhoto, generateSlidePhotos, loadPhotoRefs, loadSlidePhotos, loadVisuals, pickBrandPhotos, resolvePhoto, storeRendered, type PhotoRef } from "@/lib/render/media";
 import { renderPost, type RenderSize } from "@/lib/render/render";
 import { scenePrompt } from "@/lib/render/scenes";
 import { cleanShow, type ShowFlags } from "@/lib/render/show";
@@ -73,12 +73,9 @@ export async function POST(req: NextRequest) {
       } else if (given.length) slideRefs = fillSlidePhotos(b.slidePhotos ?? [], slideCount);
       else if (photo) slideRefs = fillSlidePhotos([photo], slideCount);
       else if (b.photo === undefined || b.photo === "auto") {
-        const brand = pickBrandPhoto(model, history);
-        if (brand && b.post.visualBrief?.usesProductPhoto) slideRefs = fillSlidePhotos([brand], slideCount);
-        else {
-          slideRefs = fillSlidePhotos(await generateSlidePhotos(session, model, b.post, aspect), slideCount);
-          if (!slideRefs.length && brand) slideRefs = fillSlidePhotos([brand], slideCount);
-        }
+        const brand = pickBrandPhotos(model, history, slideCount, !!b.post.visualBrief?.usesProductPhoto);
+        if (brand.length) slideRefs = fillSlidePhotos(brand, slideCount);
+        else slideRefs = fillSlidePhotos(await generateSlidePhotos(session, model, b.post, aspect), slideCount);
       }
       photo = slideRefs?.[0];
     } else if (b.photo === "generate") photo = await generatePhoto(session, model, genPost, aspect);

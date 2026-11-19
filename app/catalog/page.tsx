@@ -6,12 +6,15 @@ import { Button, EmptyState, PageHeader } from "@/components/ui";
 import { useStore } from "@/lib/store";
 import { uploadBrandImage } from "@/lib/brand/upload-client";
 import type { Product } from "@/lib/catalog/product";
+import { photosFromProducts, removeProductPaths, unlistedProductPhotos } from "@/lib/catalog/sync";
 
 type Draft = { id?: string; name: string; description: string; price: string; url: string; imagePaths: string[]; source: Product["source"] };
 const EMPTY: Draft = { name: "", description: "", price: "", url: "", imagePaths: [], source: "manual" };
 
 export default function CatalogPage() {
   const brand = useStore((s) => s.getActiveBrand());
+  const saveBrandModel = useStore((s) => s.saveBrandModel);
+  const backfilled = useRef<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -25,17 +28,47 @@ export default function CatalogPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const deviceRef = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async () => {
-    if (!brand) return;
+  const fetchProducts = useCallback(async (brandId: string) => {
+    const res = await fetch(`/api/products?brandId=${brandId}`).catch(() => null);
+    return res?.ok ? ((await res.json()) as { products: Product[]; urls: Record<string, string> }) : null;
+  }, []);
+
+  const load = useCallback(async (): Promise<Product[]> => {
+    if (!brand) return [];
     setLoading(true);
-    const res = await fetch(`/api/products?brandId=${brand.id}`).catch(() => null);
-    const data = res?.ok ? await res.json() : null;
+    let data = await fetchProducts(brand.id);
+    // Product photos added in Assets or onboarding become products here, once per visit.
+    if (data && backfilled.current !== brand.id) {
+      backfilled.current = brand.id;
+      const missing = unlistedProductPhotos(brand.model?.expression.photos ?? [], data.products);
+      if (missing.length) {
+        await Promise.all(
+          missing.map((m) =>
+            fetch("/api/products", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ brandId: brand.id, name: m.name, imagePaths: m.imagePaths, source: "brand" }),
+            }).catch(() => null)
+          )
+        );
+        data = (await fetchProducts(brand.id)) ?? data;
+      }
+    }
     if (data) {
       setProducts(data.products);
       setUrls((u) => ({ ...u, ...data.urls }));
     } else setError("Couldn't load your products.");
     setLoading(false);
-  }, [brand]);
+    return data?.products ?? [];
+  }, [brand, fetchProducts]);
+
+  // Puts the Catalogue's product photos on the brand's photo list, which is what posts read.
+  const pushToModel = (list: Product[], removedPaths: string[] = []) => {
+    const b = useStore.getState().getActiveBrand();
+    if (!b?.model) return;
+    const photos = photosFromProducts(list, removeProductPaths(b.model.expression.photos ?? [], removedPaths));
+    saveBrandModel({ ...b.model, expression: { ...b.model.expression, photos } }, b.sources);
+  };
 
   useEffect(() => {
     load();
@@ -54,7 +87,7 @@ export default function CatalogPage() {
     setImporting(false);
     if (!res?.ok) return setError(data?.error ?? "Couldn't import that link.");
     setImportUrl("");
-    await load();
+    pushToModel(await load());
   };
 
   // Uploads photos from the device. With no dialog open, starts a new product from them (name from the file name).
@@ -94,14 +127,17 @@ export default function CatalogPage() {
     const data = await res?.json().catch(() => null);
     setSaving(false);
     if (!res?.ok) return setError(data?.error ?? "Couldn't save the product.");
+    const before = products.find((p) => p.id === draft.id)?.imagePaths ?? [];
+    const dropped = before.filter((x) => !draft.imagePaths.includes(x));
     setDraft(null);
-    await load();
+    pushToModel(await load(), dropped);
   };
 
   const archive = async (id: string) => {
+    const gone = products.find((p) => p.id === id)?.imagePaths ?? [];
     await fetch(`/api/products/${id}`, { method: "DELETE" }).catch(() => null);
     setDraft(null);
-    await load();
+    pushToModel(await load(), gone);
   };
 
   const edit = (p: Product) =>

@@ -289,7 +289,7 @@ export default function OnboardingPage() {
     try {
       const withAnswers = modelFromAnswers();
       const chosen = mergePatch(withAnswers, directionToPatch(d), { source: "user", confidence: 1 }).model;
-      const result = await runPipeline("build", door === "build" ? withAssets(chosen) : chosen, {}, setFindings);
+      const result = await runPipeline("build", withAssets(chosen), {}, setFindings);
       saveBrandModel(result.model, door === "refine" ? { website: websiteUrl.trim() || undefined, instagram: igHandle.trim() || undefined } : {}, { source: "build" });
       // Every direction shown + the one picked: preference data for improving directions later.
       const brandId = result.model.id;

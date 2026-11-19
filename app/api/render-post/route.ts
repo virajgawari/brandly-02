@@ -83,7 +83,8 @@ export async function POST(req: NextRequest) {
     const carouselPhotos = isCarousel && slideRefs?.length ? await loadPhotoRefs(session, model, slideRefs) : undefined;
     const slidePhotos = isProduct ? await loadSlidePhotos(session, model, (b.post.slides ?? []).map((s) => s.photoPath)) : undefined;
     const photos = slidePhotos?.filter((x): x is string => !!x).slice(0, 4);
-    const pngs = await renderPost({ model, post: b.post, layout, size, logo: visuals.logo, logoTone: visuals.logoTone, photo: isCarousel ? carouselPhotos?.[0] : visuals.photo, photos, slidePhotos: isCarousel ? carouselPhotos : slidePhotos, show });
+    const { data: ws } = await session.db.from("workspaces").select("ai_watermark").eq("id", session.workspaceId).maybeSingle();
+    const pngs = await renderPost({ watermark: !!ws?.ai_watermark, model, post: b.post, layout, size, logo: visuals.logo, logoTone: visuals.logoTone, photo: isCarousel ? carouselPhotos?.[0] : visuals.photo, photos, slidePhotos: isCarousel ? carouselPhotos : slidePhotos, show });
 
     let rendered: RenderedMedia;
     if (b.store) {

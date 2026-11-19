@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import clsx from "clsx";
-import { CalendarDays, Check, ChevronsUpDown, Home, Images, LogOut, Package, Palette, PenLine, Plus, SlidersHorizontal, Workflow } from "lucide-react";
+import { CalendarDays, Check, ChevronsUpDown, Home, Images, LogOut, Package, Palette, PenLine, Plus, Settings, SlidersHorizontal, Workflow } from "lucide-react";
 import { useStore } from "@/lib/store";
 
 export const NAV = [
@@ -157,6 +157,9 @@ function AccountMenu() {
             </span>
           </label>
           <div className="h-px bg-border my-1" />
+          <Link href="/settings" onClick={() => setOpen(false)} className="w-full flex items-center gap-2.5 px-2 h-9 rounded-lg hover:bg-text/5 text-sm text-left">
+            <Settings size={14} /> Settings
+          </Link>
           <form action="/auth/signout" method="post">
             <button type="submit" className="w-full flex items-center gap-2.5 px-2 h-9 rounded-lg hover:bg-text/5 text-sm text-left">
               <LogOut size={14} /> Sign out

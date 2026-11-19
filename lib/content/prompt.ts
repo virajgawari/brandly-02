@@ -25,6 +25,8 @@ export function bannedWords(model?: BrandModel): string[] {
   return [...new Set([...AI_CLICHES, ...(model?.voice.vocabulary.avoid ?? [])].map((w) => w.trim()).filter(Boolean))];
 }
 
+import { businessLine } from "@/lib/brand/business";
+
 export interface PostRequest {
   model?: BrandModel;
   dna?: BrandDNA;
@@ -61,6 +63,7 @@ export function buildPostPrompt(r: PostRequest): { system: string; user: string;
     `- Never use these words or phrases: ${bannedWords(r.model).join(", ")}.`,
     `- No emoji as the first character. No "Did you know". No rhetorical triple lists ("X, Y and Z").`,
     `- Short paragraphs, specific details (names of products, places, numbers, textures), one idea per post.`,
+    businessLine(r.model) && `- ${businessLine(r.model)}`,
     samples.length && `- Match the rhythm of these brand lines: ${samples.slice(0, 3).map((s) => `"${s}"`).join(" ")}`,
     `- Write 2-3 sentences that could sit next to the brand's EXAMPLE LINES without standing out.`,
     `- Hashtags: 5-10, mostly from: ${tags.length ? tags.join(" ") : "niche tags for this category"}. Include the #.`,

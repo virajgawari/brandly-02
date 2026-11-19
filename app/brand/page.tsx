@@ -18,7 +18,7 @@ import { useStore } from "@/lib/store";
 import { fromBrandDNA } from "@/lib/brand/projection";
 import { profileCompleteness } from "@/lib/brand/completeness";
 import { isLocked, mergePatch, sectionConfidence, setLock } from "@/lib/brand/merge";
-import { AGE_GROUPS, MOMENTS, MOTIVATIONS, type BrandModel, type ModelPatch, type Tone } from "@/lib/brand/model";
+import { AGE_GROUPS, emptyModel, MOMENTS, MOTIVATIONS, type BrandModel, type ModelPatch, type Tone } from "@/lib/brand/model";
 import { AFFLUENCE_OPTIONS, AGE_LABELS, complianceFor, GENDER_OPTIONS, LANGUAGE_OPTIONS, MOMENT_LABELS, MOTIVATION_LABELS } from "@/lib/brand/audience";
 import { checkPalette, contrastRatio, normalizeHex, readableOn, wcagLevel } from "@/lib/brand/color";
 import { FONT_CHOICES } from "@/lib/brand/fonts";
@@ -228,6 +228,29 @@ function BrandProfile() {
           </Section>
           )}
 
+          {tab === "about" && (
+          <Section id="strategy.business" title="Business details" description="Real contact details Brandly may use in calls to action. Leave blank to skip." model={model} onLock={lock}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {(
+                [
+                  ["address", "Address"],
+                  ["phone", "Phone"],
+                  ["hours", "Opening hours"],
+                  ["ctaLink", "Link for calls to action"],
+                  ["ctaLabel", "Button wording (e.g. Book a table)"],
+                ] as const
+              ).map(([k, label]) => (
+                <Input
+                  key={k}
+                  label={label}
+                  defaultValue={model.strategy.business?.[k] ?? ""}
+                  onBlur={(e) => e.target.value !== (model.strategy.business?.[k] ?? "") && edit({ strategy: { business: { [k]: e.target.value.trim() } } })}
+                />
+              ))}
+            </div>
+          </Section>
+          )}
+
           {tab === "about" && <ChannelsSection sources={brand.sources} onSave={(next) => saveBrandModel(model, next)} />}
 
           {tab === "look" && (
@@ -427,6 +450,25 @@ function BrandProfile() {
               <WordsSection model={model} edit={edit} save={save} onLock={lock} />
               <AudienceMoreSection model={model} edit={edit} onLock={lock} />
               <ContentMoreSection model={model} edit={edit} onLock={lock} />
+              <Card className="p-5 flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <h2 className="font-medium">Reset brand profile</h2>
+                  <p className="text-xs text-text-muted mt-0.5">Clears the profile so you can build it again. Keeps the name, photos, logo and channels.</p>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    if (!window.confirm(`Reset the profile for ${model.name}? Your edits to colours, voice and content will be cleared.`)) return;
+                    const fresh = emptyModel(model.name, model.mode, model.id);
+                    fresh.expression.photos = model.expression.photos;
+                    fresh.expression.logoUrl = model.expression.logoUrl;
+                    fresh.expression.logoPath = model.expression.logoPath;
+                    save(fresh);
+                  }}
+                >
+                  Reset
+                </Button>
+              </Card>
               <Card className="p-5 flex items-center justify-between gap-4 flex-wrap">
                 <div>
                   <h2 className="font-medium">Delete this brand</h2>

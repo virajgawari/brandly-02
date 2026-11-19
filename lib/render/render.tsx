@@ -25,6 +25,8 @@ export interface RenderInput {
   slidePhotos?: (string | undefined)[];
   /** Hide the logo, call to action or supporting line. */
   show?: ShowFlags;
+  /** Stamp a small "Made with AI" label in the bottom-right corner. */
+  watermark?: boolean;
 }
 
 /** Renders one PNG per slide (one for a single-image post). */
@@ -78,7 +80,15 @@ export async function renderPost(input: RenderInput): Promise<Buffer[]> {
   return Promise.all(
     frames.map(async (props, i) => {
       const Layout = LAYOUTS[frameLayouts[i] ?? (i === 0 ? input.layout : "carousel-slide")];
-      const res = new ImageResponse(<Layout {...props} />, {
+      const body = input.watermark ? (
+        <div style={{ display: "flex", position: "relative", width, height }}>
+          <Layout {...props} />
+          <div style={{ display: "flex", position: "absolute", right: 24, bottom: 20, padding: "6px 12px", borderRadius: 999, background: "rgba(0,0,0,0.55)", color: "#fff", fontSize: 20 }}>Made with AI</div>
+        </div>
+      ) : (
+        <Layout {...props} />
+      );
+      const res = new ImageResponse(body, {
         width,
         height,
         fonts: fonts.fonts.map((f) => ({ name: f.name, data: f.data, weight: f.weight, style: f.style })),

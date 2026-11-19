@@ -33,7 +33,7 @@ describe("campaign brief", () => {
     expect(t).toContain("Campaign goal: Drive trials");
   });
 
-  it("bounds LLM calls per campaign", () => {
-    expect(maxCampaignCalls(4)).toBe(17);
+  it("estimates LLM calls per campaign", () => {
+    expect(maxCampaignCalls(4)).toBe(21);
   });
 });

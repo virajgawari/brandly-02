@@ -179,7 +179,7 @@ export default function SprintPage() {
             </div>
             <p className="text-xs text-text-muted">
               {seconds !== null ? `Took ${seconds}s. ` : ""}
-              Uses 1 plan call plus up to {maxCampaignCalls(brief.posts.length) - 1} for the posts (planned so far: {calls}).
+              Plan used {calls} call. Writing the posts takes about {maxCampaignCalls(brief.posts.length) - 1} more (writing, checking and rewrites).
             </p>
           </Card>
         )}

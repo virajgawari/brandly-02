@@ -66,7 +66,7 @@ export function campaignTopic(b: CampaignBrief, p: CampaignPost): string {
   return `${p.title}. ${p.pitch} ${extra}`.trim();
 }
 
-/** LLM calls one campaign costs at most: 1 brief + per post (write + judge + revise + re-judge). */
+/** Typical LLM calls for a campaign, measured: 1 brief + about 5 per post (write, schema retry, judge, revise, re-judge). */
 export function maxCampaignCalls(posts: number): number {
-  return 1 + posts * 4;
+  return 1 + posts * 5;
 }

@@ -509,7 +509,7 @@ export default function ComposerPage() {
                 {post && !generating && (
                   <>
                     <PhoneFrame>
-                      <PlatformPreview post={post} platforms={selectedPlatforms} brandDNA={brand.dna} igHandle={brand.sources.instagram} images={rendered?.urls ?? []} imageLoading={rendering} />
+                      <PlatformPreview post={post} platforms={selectedPlatforms} brandDNA={brand.dna} igHandle={brand.sources.instagram || brand.name} images={rendered?.urls ?? []} imageLoading={rendering} />
                     </PhoneFrame>
                     {renderError && <p className="text-xs text-error text-center">{renderError}</p>}
                     <div className="flex gap-2 justify-center flex-wrap">

@@ -189,7 +189,7 @@ export function finalizePost(raw: unknown, r: Pick<PostRequest, "model" | "dna" 
     cta,
     bestTimeToPost: p?.bestTimeToPost || loose.bestTimeToPost || "",
     postType: r.brief.carousel ? "Carousel" : cleanPostType(p?.postType || loose.postType),
-    platformVariants: Object.fromEntries(Object.entries(variants).filter(([k]) => (r.platforms as string[]).includes(k))),
+    platformVariants: Object.fromEntries(Object.entries(variants).filter(([k, v]) => (r.platforms as string[]).includes(k) && typeof v === "string" && v.trim() !== "" && !/^(same as|see|identical to|as above)/i.test(v.trim()))),
     imagePrompt: imagePromptFromBrief(vb, r.model, r.dna, loose.imagePrompt ?? headline),
     format: r.brief.format.id,
     hook: r.brief.hook.id,

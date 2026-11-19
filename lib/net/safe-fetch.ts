@@ -1,5 +1,7 @@
+import { lookup as dnsLookup } from "node:dns";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { Agent, fetch as undiciFetch } from "undici";
 
 const MAX_REDIRECTS = 5;
 
@@ -74,15 +76,34 @@ export async function assertPublicUrl(raw: string): Promise<URL> {
 }
 
 /**
+ * Agent whose DNS lookup rejects private addresses at connect time. The socket connects to
+ * the exact address that was checked, so a hostname that re-resolves to a private IP
+ * between the check and the request (DNS rebinding) cannot get through.
+ */
+const publicOnlyAgent = new Agent({
+  connect: {
+    lookup(hostname, options, cb) {
+      dnsLookup(hostname, { ...options, all: true }, (err, addrs) => {
+        const list = (Array.isArray(addrs) ? addrs : []) as { address: string; family: number }[];
+        if (err) return cb(err, "", 4);
+        if (!list.length || list.some((a) => isPrivateIp(a.address))) return cb(new Error("That address isn't public."), "", 4);
+        // Honour `all` the way net.connect asks for it (Node 20+ passes all: true).
+        if (options && (options as { all?: boolean }).all) return (cb as unknown as (e: null, a: typeof list) => void)(null, list);
+        cb(null, list[0].address, list[0].family);
+      });
+    },
+  },
+});
+
+/**
  * fetch() that validates every hop: the start URL and each redirect target are
- * checked with assertPublicUrl *before* being requested.
- * Known limit: the hostname is resolved again by fetch, so DNS rebinding between
- * check and request is not fully closed (needs an IP-pinned dispatcher).
+ * checked with assertPublicUrl before being requested, and the connection itself
+ * is pinned to a checked public address (see publicOnlyAgent).
  */
 export async function safeFetch(rawUrl: string, init: RequestInit = {}): Promise<Response> {
   let url = await assertPublicUrl(rawUrl);
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const res = await fetch(url, { ...init, redirect: "manual" });
+    const res = (await undiciFetch(url, { ...(init as object), redirect: "manual", dispatcher: publicOnlyAgent } as never)) as unknown as Response;
     if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
       res.body?.cancel().catch(() => {});
       url = await assertPublicUrl(new URL(res.headers.get("location")!, url).toString());

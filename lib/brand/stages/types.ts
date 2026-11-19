@@ -10,6 +10,8 @@ export interface Finding {
   swatches?: string[];
   fonts?: string[];
   image?: string;
+  /** Several photos (shown as a strip on the live brand board). */
+  images?: string[];
 }
 
 export interface StageContext {

@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PIPELINES, runStages, type PipelineId } from "@/lib/brand/pipelines";
 import { friendlyError } from "@/lib/errors";
-import { emptyModel, type BrandModel } from "@/lib/brand/model";
+import { emptyModel, type BrandModel, type BrandPhoto } from "@/lib/brand/model";
 import { errorResponse, requireSession } from "@/lib/db/session";
 import { withLlmContext } from "@/lib/llm-log";
 import { attachSourceMedia } from "@/lib/brand/photos";
+import { saveBrandVersion } from "@/lib/db/brands";
+import { saveWebsiteEvidence } from "@/lib/db/evidence";
+import type { PageMeasures } from "@/lib/brand/stages/measure";
+import type { PageEvidence } from "@/lib/web";
 
 // Long enough for a website read + AI synthesis; well inside Vercel's limits.
 export const maxDuration = 120;
@@ -50,12 +54,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // Keep real photos and the logo in Supabase so posts can use them later.
         if (session && pipeline !== "build") {
           const input = body.input ?? {};
-          const shots = input.imageSource === "instagram" || input.imageSource === "upload" ? (input.images as string[] | undefined) : undefined;
+          const shots = input.imageSource === "instagram" || input.imageSource === "upload" || input.imageSource === "pdf" ? (input.images as string[] | undefined) : undefined;
           try {
             const before = result.model.expression.photos?.length ?? 0;
             result.model = await attachSourceMedia(session, result.model, {
               photoUrls: result.output.photoUrls as string[] | undefined,
               screenshots: shots,
+              screenshotSource: input.imageSource === "instagram" ? "instagram" : "upload",
+              insights: result.output.photoInsights as { url: string; colors: string[]; tags?: BrandPhoto["tags"] }[] | undefined,
             });
             const saved = (result.model.expression.photos?.length ?? 0) - before;
             if (saved > 0) send({ type: "finding", finding: { id: "photos", label: `Saved ${saved} brand photos for your posts`, status: "done" } });
@@ -63,6 +69,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             console.warn("[run] storing brand media failed", err);
           }
         }
+        // Store the crawled pages. This needs the brand row, so the first run saves the brand.
+        const sitePages = result.output.sitePages as PageEvidence[] | undefined;
+        if (session && pipeline !== "build" && sitePages?.length) {
+          try {
+            await saveBrandVersion(session, result.model, { source: "stage", stageId: `pipeline:${pipeline}` });
+            const n = await saveWebsiteEvidence(session, id, sitePages, result.output.pageMeasures as PageMeasures[] | undefined);
+            send({ type: "finding", finding: { id: "pages-saved", label: `Saved ${n} pages of your website`, status: "done" } });
+          } catch (err) {
+            console.warn("[run] storing website evidence failed", err);
+          }
+        }
+        delete result.output.sitePages;
+        delete result.output.photoInsights;
+        delete result.output.pageMeasures;
+        delete result.output.pages;
         send({ type: "done", result });
       } catch (err) {
         console.error(`[run ${pipeline}]`, err);

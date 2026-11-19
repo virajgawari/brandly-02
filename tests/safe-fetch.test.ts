@@ -20,3 +20,16 @@ describe("isPrivateIp", () => {
     expect(isPrivateIp("300.1.1.1")).toBe(true);
   });
 });
+
+import { createServer } from "node:http";
+import { safeFetch } from "@/lib/net/safe-fetch";
+
+describe("safeFetch pinning", () => {
+  it("refuses a loopback address", async () => {
+    const srv = createServer((_, r) => r.end("secret")).listen(0, "127.0.0.1");
+    await new Promise((r) => srv.once("listening", r));
+    const port = (srv.address() as { port: number }).port;
+    await expect(safeFetch(`http://127.0.0.1:${port}/`)).rejects.toThrow();
+    srv.close();
+  });
+});

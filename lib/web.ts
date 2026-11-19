@@ -64,9 +64,23 @@ export interface WebsiteEvidence {
   headings: string[];
   copySample: string;
   stylesheetsRead: number;
+  /** Absolute same-origin links found on the page (crawl candidates). */
+  links: string[];
 }
 
-const attr = (tag: string, name: string) => tag.match(new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, "i"))?.[1];
+/** A non-home page read during a crawl. */
+export interface PageEvidence {
+  url: string;
+  title: string;
+  description: string;
+  headings: string[];
+  text: string;
+  images: string[];
+}
+
+export { fetchCapped };
+
+const attr = (tag: string, name: string) => tag.match(new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, "i"))?.[1]?.replace(/&amp;/g, "&");
 
 function metaContent(html: string, key: string): string | undefined {
   for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
@@ -124,13 +138,14 @@ const SKIP_IMG = /logo|icon|favicon|sprite|avatar|badge|payment|flag|emoji|spinn
 const GOOD_IMG = /product|hero|banner|feature|collection|shop|item|gallery|cover|main|slide|lifestyle|cdn\.shopify\.com\/s\/files/i;
 
 /** Picks <img> tags that look like real content photos (not icons or logos). */
-function contentImages(html: string, abs: (href?: string) => string | undefined, logoUrl?: string): string[] {
+export function contentImages(html: string, abs: (href?: string) => string | undefined, logoUrl?: string): string[] {
   const scored: { url: string; score: number }[] = [];
-  for (const tag of html.match(/<img[^>]*>/gi) ?? []) {
+  for (const tag of html.match(/<img\b[^>]*>/gi) ?? []) {
     // Lazy-loaded images keep the real URL in data-src / srcset.
     const srcset = attr(tag, "srcset") ?? attr(tag, "data-srcset");
+    // Candidates are separated by a comma + whitespace; commas inside a URL (cloudinary "f_auto,w_640") stay intact.
     const fromSet = srcset
-      ?.split(",")
+      ?.split(/,\s+/)
       .map((s) => s.trim().split(/\s+/))
       .sort((a, b) => parseInt(b[1] ?? "0") - parseInt(a[1] ?? "0"))[0]?.[0];
     const src = attr(tag, "data-src") ?? fromSet ?? attr(tag, "src");
@@ -222,5 +237,40 @@ export async function fetchWebsiteEvidence(rawUrl: string): Promise<WebsiteEvide
     headings,
     copySample: stripTags(html).slice(0, 5000),
     stylesheetsRead,
+    links: pageLinks(html, abs),
+  };
+}
+
+function pageLinks(html: string, abs: (href?: string) => string | undefined): string[] {
+  const out = new Set<string>();
+  for (const tag of html.match(/<a\b[^>]*>/gi) ?? []) {
+    const u = abs(attr(tag, "href"));
+    if (u) out.add(u);
+  }
+  return [...out];
+}
+
+/** Lighter read for inner pages: copy, headings and photos, no stylesheets. */
+export async function fetchPageEvidence(rawUrl: string, timeoutMs = 8_000): Promise<PageEvidence | null> {
+  const page = await fetchCapped(rawUrl, MAX_HTML_BYTES, timeoutMs);
+  if (!page) return null;
+  const { text: html, finalUrl } = page;
+  const abs = (href?: string) => {
+    try {
+      return href ? new URL(href, finalUrl).toString() : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  return {
+    url: finalUrl,
+    title: stripTags(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? ""),
+    description: metaContent(html, "description") ?? metaContent(html, "og:description") ?? "",
+    headings: [...html.matchAll(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi)]
+      .map((m) => stripTags(m[1]))
+      .filter((h) => h.length > 2 && h.length < 160)
+      .slice(0, 12),
+    text: stripTags(html).slice(0, 5000),
+    images: contentImages(html, abs).slice(0, 8),
   };
 }

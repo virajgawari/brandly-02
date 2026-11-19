@@ -11,106 +11,20 @@ import { ChipGroup, LockButton, SourceTag, TierCards } from "@/components/onboar
 import { BrandPostPreview } from "@/components/brand/BrandPreview";
 import { DeleteBrandDialog } from "@/components/brand/DeleteBrandDialog";
 import { LayoutKitEditor } from "@/components/brand/LayoutKitEditor";
-import { BrandPhotos } from "@/components/brand/BrandPhotos";
+import { PhotoGrid } from "@/components/brand/BrandPhotos";
+import { LogoUpload } from "@/components/brand/LogoUpload";
+import { ChannelsSection } from "@/components/brand/ChannelsSection";
 import { useStore } from "@/lib/store";
 import { fromBrandDNA } from "@/lib/brand/projection";
+import { profileCompleteness } from "@/lib/brand/completeness";
 import { isLocked, mergePatch, sectionConfidence, setLock } from "@/lib/brand/merge";
-import { AGE_GROUPS, MOMENTS, MOTIVATIONS, type BrandModel, type ModelPatch, type Tone } from "@/lib/brand/model";
+import { AGE_GROUPS, emptyModel, MOMENTS, MOTIVATIONS, type BrandModel, type ModelPatch, type Tone } from "@/lib/brand/model";
 import { AFFLUENCE_OPTIONS, AGE_LABELS, complianceFor, GENDER_OPTIONS, LANGUAGE_OPTIONS, MOMENT_LABELS, MOTIVATION_LABELS } from "@/lib/brand/audience";
 import { checkPalette, contrastRatio, normalizeHex, readableOn, wcagLevel } from "@/lib/brand/color";
 import { FONT_CHOICES } from "@/lib/brand/fonts";
 import { loadGoogleFonts } from "@/lib/brand/client";
-
-const NEEDS_CHECK = 0.6;
-
-// ── Section card with source tag + lock ────────────────────────────────────
-function Section({
-  id,
-  title,
-  description,
-  model,
-  onLock,
-  children,
-}: {
-  id: string;
-  title: string;
-  description?: string;
-  model: BrandModel;
-  onLock: (path: string, locked: boolean) => void;
-  children: React.ReactNode;
-}) {
-  const c = sectionConfidence(model, id);
-  const needsCheck = c.source !== "user" && !c.locked && c.confidence > 0 && c.confidence < NEEDS_CHECK;
-  const empty = c.confidence === 0;
-  const locked = !!model.meta[id]?.locked;
-  return (
-    <Card className={clsx("p-5", needsCheck && "border-warn/40")}>
-      <div id={`section-${id}`} className="flex items-start justify-between gap-3 mb-4 scroll-mt-6">
-        <div>
-          <h2 className="font-medium">{title}</h2>
-          {description && <p className="text-xs text-text-muted mt-0.5">{description}</p>}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <SourceTag source={empty ? undefined : c.source} needsCheck={needsCheck || (empty && id === "strategy.audience")} />
-          <LockButton locked={locked} onToggle={() => onLock(id, !locked)} />
-        </div>
-      </div>
-      {children}
-    </Card>
-  );
-}
-
-// ── Voice slider ───────────────────────────────────────────────────────────
-function ToneSlider({ left, right, value, onChange }: { left: string; right: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <label className="block">
-      <span className="flex justify-between text-xs text-text-muted mb-2">
-        <span className={clsx(value < -0.2 && "text-text font-medium")}>{left}</span>
-        <span className={clsx(value > 0.2 && "text-text font-medium")}>{right}</span>
-      </span>
-      <input
-        type="range"
-        className="tone"
-        min={-1}
-        max={1}
-        step={0.1}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        aria-label={`${left} to ${right}`}
-      />
-    </label>
-  );
-}
-
-// ── Editable list (pillars, hashtags, rules) ───────────────────────────────
-function ListEditor({ items, onChange, placeholder }: { items: string[]; onChange: (v: string[]) => void; placeholder: string }) {
-  const [draft, setDraft] = useState("");
-  const add = () => {
-    if (!draft.trim()) return;
-    onChange([...items, draft.trim()]);
-    setDraft("");
-  };
-  return (
-    <div>
-      <div className="flex flex-wrap gap-2">
-        {items.map((it, i) => (
-          <span key={i} className="inline-flex items-center gap-1.5 min-h-8 py-1 pl-3 pr-1.5 rounded-2xl border border-border bg-bg text-sm leading-snug max-w-full">
-            {it}
-            <button onClick={() => onChange(items.filter((_, j) => j !== i))} aria-label={`Remove ${it}`} className="w-5 h-5 grid place-items-center rounded-full text-text-muted hover:text-text hover:bg-text/5">
-              <X size={12} />
-            </button>
-          </span>
-        ))}
-      </div>
-      <div className="flex gap-2 mt-3">
-        <Input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder={placeholder} className="h-9" />
-        <Button variant="secondary" size="sm" className="h-9" onClick={add} aria-label="Add">
-          <Plus size={14} />
-        </Button>
-      </div>
-    </div>
-  );
-}
+import { ListEditor, NEEDS_CHECK, ScaleSlider as ToneSlider, Section } from "@/components/brand/editors";
+import { AudienceMoreSection, ContentMoreSection, IdentitySection, LookSection, PersonalitySection, PositioningSection, WordsSection } from "@/components/brand/KnowledgeSections";
 
 function BrandProfile() {
   const params = useSearchParams();
@@ -123,6 +37,11 @@ function BrandProfile() {
   const [voiceLine, setVoiceLine] = useState<string | null>(null);
   const [voiceLoading, setVoiceLoading] = useState(false);
   const voiceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [tab, setTab] = useState<TabId>("about");
+  const goToSection = (s: string) => {
+    setTab(TAB_OF_SECTION[s] ?? "about");
+    setTimeout(() => document.getElementById(`section-${s}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
 
   useEffect(() => {
     if (model) loadGoogleFonts([model.expression.tokens.font.heading.$value, model.expression.tokens.font.body.$value]);
@@ -160,7 +79,9 @@ function BrandProfile() {
     return (sc.source !== "user" && !sc.locked && sc.confidence > 0 && sc.confidence < NEEDS_CHECK) || (s === "strategy.audience" && sc.confidence === 0);
   });
 
-  const refreshVoiceLine = (m: BrandModel) => {
+  const completeness = profileCompleteness(model);
+
+  const refreshVoiceLine =(m: BrandModel) => {
     clearTimeout(voiceTimer.current);
     voiceTimer.current = setTimeout(async () => {
       setVoiceLoading(true);
@@ -196,8 +117,15 @@ function BrandProfile() {
       <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
         <div className="min-w-0">
           <p className="text-xs text-text-muted">Brand profile</p>
-          <h1 className="text-2xl font-semibold tracking-tight mt-0.5">{model.name}</h1>
+          <input
+            key={model.name}
+            defaultValue={model.name}
+            aria-label="Brand name"
+            onBlur={(e) => e.target.value.trim() && e.target.value !== model.name && edit({ name: e.target.value.trim() })}
+            className="block w-full text-2xl font-semibold tracking-tight mt-0.5 bg-transparent rounded-lg -mx-2 px-2 border border-transparent hover:border-border focus:border-text/40 focus:outline-none"
+          />
           {model.identity.oneLiner && <p className="text-text-muted mt-1 text-sm max-w-xl">{model.identity.oneLiner}</p>}
+          <p className="text-xs text-text-muted mt-2">Change anything here. It saves as you go.</p>
         </div>
         <Link href="/composer">
           <Button size="lg">
@@ -205,6 +133,23 @@ function BrandProfile() {
           </Button>
         </Link>
       </div>
+
+      {completeness.percent < 100 && (
+        <div className="rounded-xl border border-border bg-card px-4 py-3 mb-6">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <p className="font-medium">Profile {completeness.percent}% complete</p>
+            <p className="text-xs text-text-muted truncate">
+              Next:{" "}
+              <button type="button" onClick={() => goToSection(completeness.missing[0].section)} className="underline underline-offset-2 hover:text-text">
+                {completeness.missing[0].label}
+              </button>
+            </p>
+          </div>
+          <div className="h-1.5 rounded-full bg-text/10 mt-2 overflow-hidden" role="progressbar" aria-valuenow={completeness.percent} aria-valuemin={0} aria-valuemax={100}>
+            <div className="h-full bg-text rounded-full" style={{ width: `${completeness.percent}%` }} />
+          </div>
+        </div>
+      )}
 
       {(welcome || toCheck.length > 0) && (
         <div className={clsx("rounded-xl border px-4 py-3 mb-6 text-sm flex items-start gap-3", toCheck.length ? "border-warn/30 bg-warn/[0.06]" : "border-border bg-card")}>
@@ -216,17 +161,19 @@ function BrandProfile() {
                   {toCheck.length} {toCheck.length === 1 ? "thing" : "things"} to check
                 </p>
                 <p className="text-text-muted mt-0.5">
-                  Brandly wasn&apos;t sure about these. Fix anything that&apos;s off, or lock what&apos;s right.{" "}
+                  Brandly wasn&apos;t sure about these. Have a quick look.{" "}
                   {toCheck.map((s, i) => (
-                    <a key={s} href={`#section-${s}`} className="underline underline-offset-2 hover:text-text">
-                      {SECTION_NAMES[s]}
+                    <span key={s}>
+                      <button type="button" onClick={() => goToSection(s)} className="underline underline-offset-2 hover:text-text">
+                        {SECTION_NAMES[s]}
+                      </button>
                       {i < toCheck.length - 1 ? ", " : ""}
-                    </a>
+                    </span>
                   ))}
                 </p>
               </>
             ) : (
-              <p>Here&apos;s your brand. Everything is editable, and anything you change is locked so Brandly won&apos;t overwrite it.</p>
+              <p>Here&apos;s your brand. Change anything you like; your edits are kept.</p>
             )}
           </div>
         </div>
@@ -234,6 +181,24 @@ function BrandProfile() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <div className="space-y-6 min-w-0">
+          <div role="tablist" aria-label="Brand sections" className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border -mb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={clsx(
+                  "shrink-0 px-3 h-10 text-sm -mb-px border-b-2 transition-colors",
+                  tab === t.id ? "border-text font-medium text-text" : "border-transparent text-text-muted hover:text-text",
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {tab === "about" && (
           <Section id="identity" title="About" description="What you are, in plain words" model={model} onLock={lock}>
             <div className="space-y-4">
               <Input label="One-liner" defaultValue={model.identity.oneLiner} onBlur={(e) => e.target.value !== model.identity.oneLiner && edit({ identity: { oneLiner: e.target.value } })} />
@@ -261,7 +226,35 @@ function BrandProfile() {
               </div>
             </div>
           </Section>
+          )}
 
+          {tab === "about" && (
+          <Section id="strategy.business" title="Business details" description="Real contact details Brandly may use in calls to action. Leave blank to skip." model={model} onLock={lock}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {(
+                [
+                  ["address", "Address"],
+                  ["phone", "Phone"],
+                  ["hours", "Opening hours"],
+                  ["ctaLink", "Link for calls to action"],
+                  ["ctaLabel", "Button wording (e.g. Book a table)"],
+                ] as const
+              ).map(([k, label]) => (
+                <Input
+                  key={k}
+                  label={label}
+                  defaultValue={model.strategy.business?.[k] ?? ""}
+                  onBlur={(e) => e.target.value !== (model.strategy.business?.[k] ?? "") && edit({ strategy: { business: { [k]: e.target.value.trim() } } })}
+                />
+              ))}
+            </div>
+          </Section>
+          )}
+
+          {tab === "about" && <ChannelsSection sources={brand.sources} onSave={(next) => saveBrandModel(model, next)} />}
+
+          {tab === "look" && (
+          <>
           <Section id="expression.tokens.color" title="Colours" description="Used in post designs and image prompts" model={model} onLock={lock}>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {(Object.keys(palette) as (keyof typeof palette)[]).map((role) => (
@@ -285,6 +278,14 @@ function BrandProfile() {
                 </div>
               ))}
             </div>
+            {!!model.measures?.pixels?.photoPalette.length && (
+              <div className="mt-4 flex items-center gap-2 text-xs text-text-muted">
+                <span>Your photos</span>
+                {model.measures.pixels.photoPalette.map((hex) => (
+                  <span key={hex} title={hex} className="h-5 w-5 rounded-full border border-border" style={{ background: hex }} />
+                ))}
+              </div>
+            )}
             <div className="mt-4 flex flex-wrap gap-2 text-xs">
               <span className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full border border-border">
                 Text on primary: {paletteCheck.textOnPrimary.toFixed(1)}:1 · {wcagLevel(paletteCheck.textOnPrimary)}
@@ -334,10 +335,21 @@ function BrandProfile() {
             <LayoutKitEditor model={model} onChange={(kit) => edit({ expression: { layoutKit: kit } })} />
           </Section>
 
-          <Section id="expression.photos" title="Brand photos" description="Real photos used in product, offer and testimonial posts" model={model} onLock={lock}>
-            <BrandPhotos model={model} onChange={(photos) => save({ ...model, expression: { ...model.expression, photos } })} />
+          <Section id="expression.logoPath" title="Logo" description="Shown on every post. Upload your own to replace the one from your website" model={model} onLock={lock}>
+            <LogoUpload model={model} onChange={(logoPath) => save({ ...model, expression: { ...model.expression, logoPath } })} />
           </Section>
 
+          <Section id="expression.photos" title="Products" description="Named product photos. Product carousels show one per slide" model={model} onLock={lock}>
+            <PhotoGrid model={model} role="product" onChange={(photos) => save({ ...model, expression: { ...model.expression, photos } })} />
+          </Section>
+
+          <Section id="expression.photos.other" title="Other photos" description="Team, place and lifestyle photos used in offer and testimonial posts" model={model} onLock={lock}>
+            <PhotoGrid model={model} role="lifestyle" onChange={(photos) => save({ ...model, expression: { ...model.expression, photos } })} />
+          </Section>
+          </>
+          )}
+
+          {tab === "voice" && (
           <Section id="voice" title="Voice" description="Move the sliders and watch the sample line change" model={model} onLock={lock}>
             <div className="grid sm:grid-cols-2 gap-x-8 gap-y-5">
               <ToneSlider left="Funny" right="Serious" value={model.voice.tone.funny_serious} onChange={(v) => setTone("funny_serious", v)} />
@@ -365,7 +377,9 @@ function BrandProfile() {
               />
             </div>
           </Section>
+          )}
 
+          {tab === "audience" && (
           <Section id="strategy.audience" title="Audience" description="Shapes colours, voice and which platforms to post on" model={model} onLock={lock}>
             <div className="space-y-5">
               <div>
@@ -399,7 +413,9 @@ function BrandProfile() {
               )}
             </div>
           </Section>
+          )}
 
+          {tab === "audience" && (
           <Section id="content" title="What to post about" model={model} onLock={lock}>
             <div className="space-y-6">
               <div>
@@ -422,14 +438,54 @@ function BrandProfile() {
               </div>
             </div>
           </Section>
+          )}
 
-          <Card className="p-5 flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <h2 className="font-medium">Delete this brand</h2>
-              <p className="text-xs text-text-muted mt-0.5">Removes the profile and all of its posts and automations.</p>
+          {tab === "more" && (
+            <>
+              <p className="text-sm text-text-muted">Optional extras for fine-tuning. You can skip all of this.</p>
+              <PositioningSection model={model} edit={edit} onLock={lock} />
+              <IdentitySection model={model} edit={edit} onLock={lock} />
+              <PersonalitySection model={model} edit={edit} onLock={lock} />
+              <LookSection model={model} edit={edit} onLock={lock} />
+              <WordsSection model={model} edit={edit} save={save} onLock={lock} />
+              <AudienceMoreSection model={model} edit={edit} onLock={lock} />
+              <ContentMoreSection model={model} edit={edit} onLock={lock} />
+              <Card className="p-5 flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <h2 className="font-medium">Reset brand profile</h2>
+                  <p className="text-xs text-text-muted mt-0.5">Clears the profile so you can build it again. Keeps the name, photos, logo and channels.</p>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    if (!window.confirm(`Reset the profile for ${model.name}? Your edits to colours, voice and content will be cleared.`)) return;
+                    const fresh = emptyModel(model.name, model.mode, model.id);
+                    fresh.expression.photos = model.expression.photos;
+                    fresh.expression.logoUrl = model.expression.logoUrl;
+                    fresh.expression.logoPath = model.expression.logoPath;
+                    save(fresh);
+                  }}
+                >
+                  Reset
+                </Button>
+              </Card>
+              <Card className="p-5 flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <h2 className="font-medium">Delete this brand</h2>
+                  <p className="text-xs text-text-muted mt-0.5">Removes the profile and all of its posts and automations.</p>
+                </div>
+                <DeleteBrandDialog brandId={brand.id} brandName={model.name} />
+              </Card>
+            </>
+          )}
+
+          {tab !== "more" && (
+            <div className="flex justify-end">
+              <Button variant="secondary" onClick={() => setTab(TABS[TABS.findIndex((t) => t.id === tab) + 1].id)}>
+                Next: {TABS[TABS.findIndex((t) => t.id === tab) + 1].label} <ArrowRight size={14} />
+              </Button>
             </div>
-            <DeleteBrandDialog brandId={brand.id} brandName={model.name} />
-          </Card>
+          )}
         </div>
 
         {/* Sticky live preview */}
@@ -461,6 +517,23 @@ function BrandProfile() {
     </div>
   );
 }
+
+type TabId = "about" | "look" | "voice" | "audience" | "more";
+const TABS: { id: TabId; label: string }[] = [
+  { id: "about", label: "About" },
+  { id: "look", label: "Look" },
+  { id: "voice", label: "Voice" },
+  { id: "audience", label: "Audience & posts" },
+  { id: "more", label: "Advanced" },
+];
+const TAB_OF_SECTION: Record<string, TabId> = {
+  identity: "about",
+  "expression.tokens.color": "look",
+  "expression.tokens.font": "look",
+  voice: "voice",
+  "strategy.audience": "audience",
+  content: "audience",
+};
 
 const SECTION_NAMES: Record<string, string> = {
   identity: "About",

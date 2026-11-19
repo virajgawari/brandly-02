@@ -1,19 +1,27 @@
 import type { BrandModel } from "./model";
 import { mergePatch } from "./merge";
 import { ingestStage } from "./stages/ingest";
+import { measureStage } from "./stages/measure";
+import { visualStage } from "./stages/visual";
+import { rateStage } from "./stages/rate";
+import { contradictionsStage } from "./stages/contradictions";
 import { extractStage } from "./stages/extract";
 import { contentSystemStage } from "./stages/content-system";
 import { validateStage } from "./stages/validate";
 import { directionsStage } from "./stages/directions";
 import { layoutKitStage } from "./stages/layout-kit";
 import type { Finding, StageDefinition } from "./stages/types";
-import type { Compliance } from "./model";
+import type { Compliance, Measures } from "./model";
 import { withFeature } from "../llm-log";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STAGES: Record<string, StageDefinition<any>> = {
   [ingestStage.id]: ingestStage,
+  [measureStage.id]: measureStage,
+  [visualStage.id]: visualStage,
   [extractStage.id]: extractStage,
+  [rateStage.id]: rateStage,
+  [contradictionsStage.id]: contradictionsStage,
   [contentSystemStage.id]: contentSystemStage,
   [validateStage.id]: validateStage,
   [directionsStage.id]: directionsStage,
@@ -22,10 +30,10 @@ export const STAGES: Record<string, StageDefinition<any>> = {
 
 /** A path through the loop is just an ordered list of stages. */
 export const PIPELINES = {
-  analyse: ["ingest", "extract", "content-system", "layout-kit", "validate"],
+  analyse: ["ingest", "measure", "visual", "extract", "rate", "contradictions", "content-system", "layout-kit", "validate"],
   // Build and Refine reuse the same engine; their interview/direction stages plug in here.
   build: ["content-system", "layout-kit", "validate"],
-  refine: ["ingest", "extract", "content-system", "layout-kit", "validate"],
+  refine: ["ingest", "measure", "visual", "extract", "rate", "contradictions", "content-system", "layout-kit", "validate"],
 } as const;
 export type PipelineId = keyof typeof PIPELINES;
 
@@ -72,6 +80,8 @@ export async function runStages(
     if (result.evidence?.length) model = { ...model, evidence: [...model.evidence.filter((e) => !result.evidence!.some((n) => n.source === e.source)), ...result.evidence] };
     const compliance = result.output?.compliance as Compliance | undefined;
     if (compliance) model = { ...model, compliance };
+    const measures = result.output?.measures as Measures | undefined;
+    if (measures) model = { ...model, measures };
     if (result.issues) issues.push(...result.issues);
     carry = { ...carry, ...(result.output ?? {}) };
     output = { ...output, ...(result.output ?? {}) };

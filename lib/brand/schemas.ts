@@ -1,13 +1,43 @@
 import { z } from "zod";
 import { AGE_GROUPS, MOMENTS, MOTIVATIONS } from "./model";
+import { looksLikeUnitPersonality, clampPct, signedToTone, unitToPct, TONE_KEYS } from "./scale";
 import { BUSINESS_MODEL_KEYS, INDUSTRY_KEYS, PRIMARY_GOAL_KEYS } from "./taxonomy";
 
 // Lenient schemas: cheap models sometimes drop or mistype fields, so every
 // field falls back to a safe default instead of failing the whole stage.
 const str = z.string().catch("");
 const strArr = z.array(z.string()).catch([]);
-const unit = z.coerce.number().min(0).max(1).catch(0.5);
-const signed = z.coerce.number().min(-1).max(1).catch(0);
+const unit = z.coerce.number().min(0).max(1).catch(0.5); // confidences stay 0–1
+const opt = z.coerce.number().finite().optional().catch(undefined);
+
+/** Which evidence refs (E1, E2…) the model says each field rests on. Bad shapes become {} so a stage never fails on it. */
+export const CitesSchema = z
+  .record(z.string(), z.array(z.string()).catch([]))
+  .catch({})
+  .default({});
+
+/** Tone axes, 0–100. Replies that still use -1..1 (older prompts, the n8n workflow) are converted; gaps become 50. */
+export const tonePct = z
+  .object({ funny_serious: opt, formal_casual: opt, respectful_irreverent: opt, enthusiastic_matter: opt })
+  .catch({} as Record<(typeof TONE_KEYS)[number], undefined>)
+  .transform((t) => {
+    const given = Object.fromEntries(TONE_KEYS.filter((k) => t[k] !== undefined).map((k) => [k, t[k] as number]));
+    const signed = Object.keys(given).length > 0 && Object.values(given).every((v) => v >= -1 && v <= 1);
+    return Object.fromEntries(TONE_KEYS.map((k) => [k, k in given ? (signed ? signedToTone(given[k]) : clampPct(Math.round(given[k]))) : 50])) as Record<(typeof TONE_KEYS)[number], number>;
+  });
+
+/** Aaker dimensions, 0–100. Replies using 0–1 are converted; gaps become the defaults. */
+const PERSONALITY_DEFAULT = { sincerity: 50, excitement: 50, competence: 50, sophistication: 50, ruggedness: 20 };
+export const personalityPct = z
+  .object({ sincerity: opt, excitement: opt, competence: opt, sophistication: opt, ruggedness: opt })
+  .catch({})
+  .transform((p) => {
+    const given = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)) as Record<string, number>;
+    const unit = Object.keys(given).length > 0 && looksLikeUnitPersonality(given);
+    return Object.fromEntries(
+      Object.entries(PERSONALITY_DEFAULT).map(([k, d]) => [k, k in given ? (unit ? unitToPct(given[k]) : clampPct(Math.round(given[k]))) : d])
+    ) as typeof PERSONALITY_DEFAULT;
+  });
 const hex = z
   .string()
   .regex(/^#?[0-9a-fA-F]{6}$/)
@@ -45,6 +75,7 @@ export const ExtractSchema = z.object({
   problem: str,
   promise: str,
   differentiators: strArr,
+  proofPoints: strArr,
   prism: z
     .object({
       physique: str,
@@ -56,9 +87,7 @@ export const ExtractSchema = z.object({
     })
     .catch({ physique: "", personality: "", culture: "", relationship: "", reflection: "", selfImage: "" }),
   archetype: str,
-  personality: z
-    .object({ sincerity: unit, excitement: unit, competence: unit, sophistication: unit, ruggedness: unit })
-    .catch({ sincerity: 0.5, excitement: 0.5, competence: 0.5, sophistication: 0.5, ruggedness: 0.2 }),
+  personality: personalityPct,
   colors: z.object({ primary: hex, secondary: hex, accent: hex, neutral: hex }).catch({
     primary: undefined,
     secondary: undefined,
@@ -70,9 +99,7 @@ export const ExtractSchema = z.object({
   typographyFeel: str,
   visualStyle: str,
   imageryStyle: str,
-  tone: z
-    .object({ funny_serious: signed, formal_casual: signed, respectful_irreverent: signed, enthusiastic_matter: signed })
-    .catch({ funny_serious: 0, formal_casual: 0, respectful_irreverent: 0, enthusiastic_matter: 0 }),
+  tone: tonePct,
   voiceDescription: str,
   vocabularyUse: strArr,
   vocabularyAvoid: strArr,
@@ -94,6 +121,7 @@ export const ExtractSchema = z.object({
   hashtagClusters: strArr,
   do: strArr,
   dont: strArr,
+  cites: CitesSchema,
 });
 export type ExtractResult = z.infer<typeof ExtractSchema>;
 
@@ -103,6 +131,7 @@ export const ContentSystemSchema = z.object({
   hashtagClusters: strArr,
   do: strArr,
   dont: strArr,
+  cites: CitesSchema,
 });
 export type ContentSystemResult = z.infer<typeof ContentSystemSchema>;
 
@@ -117,6 +146,23 @@ export const VisualInsightsSchema = z.object({
   tone: str,
 });
 export type VisualInsights = z.infer<typeof VisualInsightsSchema>;
+
+export const ImageTagSchema = z.object({
+  index: z.coerce.number().catch(-1),
+  subject: str,
+  setting: str,
+  style: str,
+  people: z.enum(["none", "one", "group"]).catch("none"),
+  textOnImage: z.boolean().catch(false),
+  productVisible: z.boolean().catch(false),
+  /** Short product name when a product is visible (max 6 words). */
+  productName: z
+    .string()
+    .catch("")
+    .transform((s) => s.trim().split(/\s+/).slice(0, 6).join(" ")),
+});
+export type ImageTags = z.infer<typeof ImageTagSchema>;
+export const ImageTagsSchema = z.array(ImageTagSchema).catch([]);
 
 // ── Generated post (generate-post@2) ────────────────────────────────────────
 const shortList = (max: number) => z.array(z.string()).catch([]).transform((a) => a.map((s) => s.trim()).filter(Boolean).slice(0, max));
@@ -140,7 +186,7 @@ export const GeneratedPostSchema = z.object({
   slides: z
     .array(z.object({ headline: str, body: str }))
     .catch([])
-    .transform((a) => a.filter((s) => s.headline).slice(0, 8)),
+    .transform((a) => a.filter((s) => s.headline).slice(0, 10)),
   visualBrief: VisualBriefSchema.catch({ subject: "", setting: "", lighting: "", composition: "", usesProductPhoto: false }),
   bestTimeToPost: str,
   postType: str,

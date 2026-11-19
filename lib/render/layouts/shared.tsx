@@ -24,6 +24,10 @@ export interface LayoutProps {
   logoTone?: "light" | "dark";
   /** Data URI of the photo, if the layout uses one. */
   photo?: string;
+  /** Product carousel cover: the product photos shown in the collage. */
+  photos?: string[];
+  /** Carousel slide without the step number (the product carousel's closing slide). */
+  noNumber?: boolean;
   headline: string;
   subline?: string;
   cta?: string;
@@ -173,6 +177,26 @@ export function Cta({ p, bg, fg }: { p: LayoutProps; bg: string; fg: string }) {
 
 export function Frame({ bg, children, style }: { bg: string; children: ReactNode; style?: CSSProperties }) {
   return <div style={{ display: "flex", position: "relative", width: "100%", height: "100%", background: bg, ...style }}>{children}</div>;
+}
+
+/** Photo filling the whole frame, uncropped when it has the frame's aspect, with a dark fade at the bottom for text. */
+export function FullBleedPhoto({ p }: { p: LayoutProps }) {
+  return (
+    <div style={{ display: "flex", position: "absolute", top: 0, left: 0, width: p.width, height: p.height }}>
+      <Photo p={p} style={{ width: p.width, height: p.height }} />
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: p.width,
+          height: p.height,
+          backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,0) 30%, rgba(0,0,0,0.88) 100%)",
+        }}
+      />
+    </div>
+  );
 }
 
 export function Photo({ p, style }: { p: LayoutProps; style?: CSSProperties }) {

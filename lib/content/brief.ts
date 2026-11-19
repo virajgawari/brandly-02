@@ -3,7 +3,7 @@
 // option wins, so consecutive posts differ in shape, not just in words.
 import type { BrandModel, LayoutId, LayoutKit } from "@/lib/brand/model";
 import { MOMENT_LABELS } from "@/lib/brand/audience";
-import type { TemplateCategory } from "@/lib/types";
+import type { ProductRef, TemplateCategory } from "@/lib/types";
 import type { ContentHistory } from "./history";
 
 export interface PostFormat {
@@ -21,9 +21,36 @@ export interface PostFormat {
   carousel?: boolean;
   /** What the visual fields must contain. */
   visualText: string;
+  /** Only used when asked for (never picked in normal rotation). */
+  manual?: boolean;
+  /** Needs real facts to write without inventing: used only when the request text or the brand profile supplies some. */
+  requires?: Array<"request" | "proof" | "products">;
 }
 
+/** Products shown in one carousel: cover + one slide each + CTA = at most 10 slides. */
+export const MAX_CAROUSEL_PRODUCTS = 8;
+
+/** Splits a product list into carousels of at most MAX_CAROUSEL_PRODUCTS. */
+export function chunkProducts<T>(list: T[], size = MAX_CAROUSEL_PRODUCTS): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+
+export const PRODUCT_CAROUSEL: PostFormat = {
+  id: "product-carousel",
+  label: "Product carousel",
+  instruction: "Show the brand's products one by one, so a reader can swipe through the range. Be specific about what each product is for.",
+  templates: [],
+  layouts: ["product-cover"],
+  usesProductPhoto: true,
+  carousel: true,
+  manual: true,
+  visualText: "headline = a cover line that names the range, max 8 words. subline = who it is for, max 10 words.",
+};
+
 export const FORMATS: PostFormat[] = [
+  PRODUCT_CAROUSEL,
   {
     id: "myth-vs-fact",
     label: "Myth vs fact",
@@ -45,7 +72,8 @@ export const FORMATS: PostFormat[] = [
   {
     id: "single-stat",
     label: "Single stat",
-    instruction: "Build the post around ONE striking number (from the brand facts or a widely known, non-fabricated figure). Explain what it means for the reader.",
+    requires: ["request", "proof"],
+    instruction: "Build the post around ONE number that appears in the brand facts or the request. If there is none, do not use a number: lead with the single clearest fact instead.",
     templates: ["educational", "announcement", "testimonial", "product_launch"],
     layouts: ["big-number", "split"],
     visualText: 'stat = the number only (e.g. "3x", "72%", "10,000"). headline = what the number is about, max 8 words. Never invent precise statistics about third parties; if unsure, use a number about the brand itself.',
@@ -61,7 +89,8 @@ export const FORMATS: PostFormat[] = [
   {
     id: "product-spotlight",
     label: "Product spotlight",
-    instruction: "Focus on one product or service: what it is, the one detail people miss, and who it is for.",
+    requires: ["request", "products"],
+    instruction: "Focus on one product or service from the brand facts: what it is and who it is for. Use only details given in the context; never invent specs, origins, ingredients or tasting notes.",
     templates: ["product_launch", "announcement", "ugc", "seasonal", "testimonial"],
     layouts: ["framed", "photo-band", "split", "full-bleed"],
     usesProductPhoto: true,
@@ -96,7 +125,7 @@ export const FORMATS: PostFormat[] = [
   {
     id: "customer-question",
     label: "Customer question",
-    instruction: "Answer one real question a customer would ask before buying. Quote the question, then answer it honestly.",
+    instruction: "Answer one question a buyer in this category would plausibly ask. Frame it as a question, never as something 'customers keep asking' or a quote from a real person. Answer only with facts from the context.",
     templates: ["engagement", "testimonial", "educational", "product_launch"],
     layouts: ["quote", "split"],
     visualText: "headline = the customer's question in their words, max 12 words. subline = a 5-8 word answer teaser.",
@@ -104,7 +133,8 @@ export const FORMATS: PostFormat[] = [
   {
     id: "behind-the-scenes",
     label: "Behind the scenes",
-    instruction: "Show one specific part of how the work gets done: a person, a step, a tool, a mistake. Process over polish.",
+    requires: ["request", "proof"],
+    instruction: "Show one part of how the work gets done, using only steps, tools or places named in the context. Do not name or invent people. Process over polish.",
     templates: ["behind_scenes", "announcement", "ugc"],
     layouts: ["full-bleed", "photo-band", "framed"],
     visualText: "headline = what we are showing, max 8 words.",
@@ -129,7 +159,8 @@ export const FORMATS: PostFormat[] = [
   {
     id: "mini-story",
     label: "Mini story",
-    instruction: "Tell a 4-6 sentence true-to-life story (a customer, a maker, a day). Start in the middle of the action. End with what changed.",
+    requires: ["request", "proof"],
+    instruction: "Tell a 4-6 sentence everyday scene built only from the facts in the context. Do not name any person, place or customer, and do not present it as a real event. Start in the middle of the action. End with what changed.",
     templates: ["testimonial", "behind_scenes", "ugc", "announcement", "seasonal"],
     layouts: ["full-bleed", "photo-band", "quote"],
     visualText: "headline = the story's turning point in max 8 words.",
@@ -137,7 +168,8 @@ export const FORMATS: PostFormat[] = [
   {
     id: "offer",
     label: "Offer",
-    instruction: "Make one clear offer: what they get, until when, and how to get it. Short and specific, no hype words.",
+    requires: ["request"],
+    instruction: "Make one clear offer using ONLY the offer details in the request (what, until when, how). Never invent discounts, codes, deadlines, shipping or delivery terms. Short and specific, no hype words.",
     templates: ["product_launch", "seasonal", "announcement"],
     layouts: ["framed", "photo-band", "big-number"],
     usesProductPhoto: true,
@@ -153,9 +185,9 @@ export interface HookStyle {
 export const HOOKS: HookStyle[] = [
   { id: "question", instruction: "Open with a direct question the reader would answer yes to. Not 'Did you know'." },
   { id: "bold-claim", instruction: "Open with a short, confident statement (max 8 words) the brand can stand behind." },
-  { id: "number", instruction: "Open with a specific number (a count, time, amount or percentage)." },
+  { id: "number", instruction: "Open with a number only if one appears in the context or request; otherwise open with a short, concrete fact." },
   { id: "contrarian", instruction: "Open by disagreeing with common advice in the category, then earn it." },
-  { id: "story", instruction: "Open mid-scene with a concrete moment: who, where, what happened. No setup sentence." },
+  { id: "story", instruction: "Open mid-scene with a concrete everyday moment from the reader's side. No named people, no setup sentence." },
   { id: "if-you", instruction: "Open with 'If you…' naming a specific situation the audience is in." },
 ];
 
@@ -194,6 +226,8 @@ export interface PostBrief {
   entryPoint?: string;
   moment?: string;
   carousel: boolean;
+  /** Product carousel only: the products, in slide order. */
+  products?: ProductRef[];
 }
 
 /** Position in history (0 = newest) of the first post where `get` matches, or -1. */
@@ -221,14 +255,24 @@ export function pickBrief(
   model: BrandModel | undefined,
   history: ContentHistory,
   template: TemplateCategory | undefined,
-  opts: { allowCarousel?: boolean; rand?: () => number } = {}
+  opts: { allowCarousel?: boolean; rand?: () => number; products?: ProductRef[]; request?: string } = {}
 ): PostBrief {
   const rand = opts.rand ?? Math.random;
   const window = Math.max(history.posts.length, 6);
-  const fitting = template ? FORMATS.filter((f) => f.templates.includes(template)) : FORMATS;
-  const pool = fitting.length ? fitting : FORMATS;
+  const regular = FORMATS.filter((f) => !f.manual);
+  const have = {
+    request: !!opts.request && opts.request.trim().length > 20,
+    proof: !!(model?.strategy.proofPoints.length || model?.strategy.differentiators.length),
+    products: !!model?.content.productsServices.length,
+  };
+  const grounded = (f: PostFormat) => !f.requires || f.requires.some((r) => have[r]);
+  const gated = regular.filter(grounded);
+  const base = gated.length ? gated : regular;
+  const fitting = template ? base.filter((f) => f.templates.includes(template)) : base;
+  const pool = fitting.length ? fitting : base;
+  const products = opts.products?.slice(0, MAX_CAROUSEL_PRODUCTS);
 
-  const format = pickLeastRecent(
+  const format = products?.length ? PRODUCT_CAROUSEL : pickLeastRecent(
     pool,
     (f) => recencyScore(lastUsed(history, (p) => p.format, f.id), window) * 2 + (history.dislikes.formats[f.id] ?? 0) * 3,
     rand
@@ -250,6 +294,7 @@ export function pickBrief(
   const moment = moments.length ? MOMENT_LABELS[moments[n % moments.length]] : undefined;
 
   const recentCarousel = history.posts.slice(0, 2).some((p) => p.layout === "carousel-cover");
+  if (products?.length) return { format, hook, pillar, entryPoint, moment, carousel: true, products };
   const carousel = !!(opts.allowCarousel && format.carousel && !recentCarousel);
 
   return { format, hook, pillar, entryPoint, moment, carousel };
@@ -265,7 +310,13 @@ export function briefBlock(b: PostBrief): string {
     b.entryPoint && `- SITUATION TO TIE IT TO: ${b.entryPoint}`,
     b.moment && `- MOMENT: ${b.moment}`,
     `- VISUAL TEXT: ${b.format.visualText}`,
-    b.carousel
+    b.products?.length
+      ? [
+          `- PRODUCTS (in this order):`,
+          ...b.products.map((p, i) => `  ${i + 1}. ${p.name}${p.note ? ` (${p.note})` : ""}`),
+          `- CAROUSEL: write "slides" with exactly ${b.products.length + 2} slides. Slide 1 is the cover: a headline (max 8 words) for the whole range. Slides 2-${b.products.length + 1} are the products in the order above: headline = the product name, body = ONE benefit, max 14 words, using only what the name and note say (no invented specs, prices or claims). The last slide's headline is the call to action (max 6 words).`,
+        ].join("\n")
+      : b.carousel
       ? `- CAROUSEL: write "slides" with 4-6 slides. Slide 1 is the cover (the headline). Each other slide has a headline (max 8 words) and an optional body (max 20 words).`
       : `- Single image post. "slides" must be an empty array.`,
   ]
@@ -276,8 +327,11 @@ export function briefBlock(b: PostBrief): string {
 // ── Layout choice ──────────────────────────────────────────────────────────
 const PHOTO_LAYOUTS: LayoutId[] = ["photo-band", "full-bleed", "split", "framed"];
 
+/** Layouts only used for carousels; never offered in the kit or picked for normal posts. */
+export const SPECIAL_LAYOUTS: LayoutId[] = ["carousel-cover", "carousel-slide", "product-cover", "product-slide"];
+
 export function layoutNeedsPhoto(id: LayoutId): boolean {
-  return PHOTO_LAYOUTS.includes(id) || id === "carousel-cover";
+  return PHOTO_LAYOUTS.includes(id) || id === "carousel-cover" || id === "product-cover";
 }
 
 /**
@@ -288,11 +342,12 @@ export function chooseLayout(
   kit: LayoutKit,
   formatId: string | undefined,
   history: ContentHistory,
-  opts: { carousel?: boolean; rand?: () => number } = {}
+  opts: { carousel?: boolean; product?: boolean; rand?: () => number } = {}
 ): LayoutId {
+  if (opts.product) return "product-cover";
   if (opts.carousel) return "carousel-cover";
   const rand = opts.rand ?? Math.random;
-  const allowed: LayoutId[] = kit.layouts.filter((l) => l !== "carousel-slide" && l !== "carousel-cover");
+  const allowed: LayoutId[] = kit.layouts.filter((l) => !SPECIAL_LAYOUTS.includes(l));
   const format = FORMATS.find((f) => f.id === formatId);
   const recent = history.posts.slice(0, 2).map((p) => p.layout);
   const preferred = (format?.layouts ?? []).filter((l) => allowed.includes(l));

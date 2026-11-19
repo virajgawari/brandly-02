@@ -1,6 +1,7 @@
 import "server-only";
 import type { BrandModel } from "@/lib/brand/model";
 import type { Brand } from "@/lib/types";
+import { upgradeModel } from "@/lib/brand/upgrade";
 import type { Session } from "./session";
 
 export type VersionSource = "stage" | "user" | "import" | "rollback" | "build";
@@ -27,10 +28,11 @@ export function diffPaths(prev: unknown, next: unknown, base = ""): string[] {
  */
 export async function saveBrandVersion(
   s: Session,
-  model: BrandModel,
+  incoming: BrandModel,
   opts: { sources?: Brand["sources"]; source: VersionSource; stageId?: string; legacyId?: string }
 ) {
   const { db, userId, workspaceId } = s;
+  const model = upgradeModel(incoming);
   // Queryable copy of the classification (the BrandModel stays the source of truth).
   const classification = {
     industry: model.strategy.industry ?? null,
@@ -65,7 +67,8 @@ export async function saveBrandVersion(
   }
 
   const current = (existing?.current as unknown as { id: string; model: BrandModel } | null) ?? null;
-  const prev = current?.model;
+  // Diff against the upgraded previous model so a pure v1→v2 rescale isn't logged as a user edit.
+  const prev = current?.model ? upgradeModel(current.model) : undefined;
   const changed = prev ? LAYERS.flatMap((l) => diffPaths(prev[l], model[l], l)) : [];
   if (prev && !changed.length) return { versionId: current!.id, changed };
 

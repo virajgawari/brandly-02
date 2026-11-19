@@ -65,7 +65,7 @@ export const THIS_OR_THAT: ThisOrThatPair[] = [
   },
 ];
 
-/** answers: pairId → "a" | "b" | undefined (skipped). Returns scores 0–1. */
+/** answers: pairId → "a" | "b" | undefined (skipped). Returns scores 0–100. */
 export function scorePersonality(answers: Record<string, "a" | "b" | undefined>): Personality {
   const keys: PersonalityKey[] = ["sincerity", "excitement", "competence", "sophistication", "ruggedness"];
   const raw = Object.fromEntries(keys.map((k) => [k, 0])) as Record<PersonalityKey, number>;
@@ -80,8 +80,8 @@ export function scorePersonality(answers: Record<string, "a" | "b" | undefined>)
     }
   }
   const out = {} as Personality;
-  // Floor of 0.15 keeps unanswered dimensions from producing extreme palettes.
-  for (const k of keys) out[k] = max[k] ? Math.round((0.15 + 0.85 * (raw[k] / max[k])) * 100) / 100 : 0.3;
+  // Floor of 15 keeps unanswered dimensions from producing extreme palettes.
+  for (const k of keys) out[k] = max[k] ? Math.round(15 + 85 * (raw[k] / max[k])) : 30;
   return out;
 }
 

@@ -1,9 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { GeneratePostPayload } from "@/lib/types";
+import type { GeneratePostPayload, ProductRef } from "@/lib/types";
+import { MAX_CAROUSEL_PRODUCTS } from "@/lib/content/brief";
 import { generatePost } from "@/lib/content/generate";
 import { AuthError, errorResponse, requireSession } from "@/lib/db/session";
 
 export const maxDuration = 60;
+
+/** Keeps only products that are the brand's own product photos, in the order sent. */
+function validProducts(body: GeneratePostPayload): ProductRef[] | undefined {
+  if (!body.products?.length) return undefined;
+  const own = new Map((body.brandModel?.expression.photos ?? []).filter((p) => p.role === "product").map((p) => [p.path, p]));
+  const out: ProductRef[] = [];
+  for (const p of body.products) {
+    const photo = own.get(p.path);
+    if (!photo || out.some((o) => o.path === p.path)) continue;
+    const name = (p.name || photo.product?.name || "").trim().slice(0, 60);
+    if (!name) continue;
+    const note = (p.note || photo.product?.note || "").trim().slice(0, 80);
+    out.push({ path: p.path, name, ...(note ? { note } : {}) });
+  }
+  return out.length ? out.slice(0, MAX_CAROUSEL_PRODUCTS) : undefined;
+}
 
 // Picks a brief (format, hook, pillar) from the brand's recent posts, writes the post
 // with the full brand context, and chooses a layout. Runs through n8n when it is configured.
@@ -13,6 +30,7 @@ export async function POST(req: NextRequest) {
     const body: GeneratePostPayload = await req.json();
     if (!body.platforms?.length) return NextResponse.json({ error: "Choose at least one platform" }, { status: 400 });
     const result = await generatePost({
+      products: validProducts(body),
       feature: "generate-post",
       model: body.brandModel,
       dna: body.brandDNA,

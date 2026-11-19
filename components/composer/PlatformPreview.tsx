@@ -70,7 +70,7 @@ export default function PlatformPreview({ post, platforms, brandDNA, igHandle, i
           <div>
             <p className="text-sm font-semibold">
               {active === "twitter"
-                ? `@${igHandle || "yourbrand"}`
+                ? `@${(igHandle || "yourbrand").replace(/\s+/g, "").toLowerCase()}`
                 : igHandle || "Your Brand"}
             </p>
             <p className="text-xs text-text-muted">

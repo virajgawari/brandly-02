@@ -2,29 +2,72 @@ import "server-only";
 import type { BrandModel } from "@/lib/brand/model";
 import type { Session } from "@/lib/db/session";
 import type { ContentHistory } from "@/lib/content/history";
+import { llmScope } from "@/lib/db/llm-scope";
 import { n8nEnabled, n8nRequest } from "@/lib/n8n";
 import type { GeneratedPost, RenderedMedia } from "@/lib/types";
 import { imageFromStorage, imageFromUrl, imageTone } from "./assets";
 import { layoutKitOf } from "./kit";
+import { museEnabled, museImage, type MuseAspect } from "./muse";
 
 export type PhotoRef = NonNullable<RenderedMedia["photo"]>;
 
 /** Brand photo for this post: least recently used one first (Phase 3b). */
-export function pickBrandPhoto(model: BrandModel, history: ContentHistory): PhotoRef | undefined {
-  const photos = model.expression.photos ?? [];
-  if (!photos.length) return undefined;
+export function pickBrandPhoto(model: BrandModel, history: ContentHistory, preferProduct = false): PhotoRef | undefined {
+  return pickBrandPhotos(model, history, 1, preferProduct)[0];
+}
+
+/** Up to `n` different brand photos, least recently used first (a carousel gets a different photo per slide). */
+export function pickBrandPhotos(model: BrandModel, history: ContentHistory, n: number, preferProduct = false): PhotoRef[] {
+  const all = model.expression.photos ?? [];
+  // A product post uses product photos when there are any; otherwise any brand photo.
+  const products = preferProduct ? all.filter((p) => p.role === "product") : [];
+  const photos = products.length ? products : all;
   const lastUse = (path: string) => {
     const i = history.posts.findIndex((p) => p.photoPath === path);
     return i < 0 ? Infinity : i; // larger = longer ago
   };
-  const best = [...photos].sort((a, b) => lastUse(b.path) - lastUse(a.path))[0];
-  return { kind: "brand", ref: best.path };
+  return [...photos]
+    .sort((a, b) => lastUse(b.path) - lastUse(a.path))
+    .slice(0, Math.max(0, n))
+    .map((p) => ({ kind: "brand" as const, ref: p.path }));
 }
 
-/** Generated photo through the n8n image workflow, from the post's visual brief. */
-export async function generatePhoto(post: GeneratedPost, aspect: "4:5" | "1:1"): Promise<PhotoRef | undefined> {
-  if (!n8nEnabled() || !post.imagePrompt) return undefined;
-  const { status, data } = await n8nRequest("generate-image", { prompt: post.imagePrompt, aspect, styled: true });
+/** Product photos the generated image should be based on: the post's first slide photo, else brand product photos. */
+function referencePaths(model: BrandModel, post: GeneratedPost): { paths: string[]; notes: string[] } {
+  const slidePath = post.slides?.find((s) => s.photoPath)?.photoPath;
+  if (slidePath) {
+    const match = (model.expression.photos ?? []).find((p) => p.path === slidePath);
+    return { paths: [slidePath], notes: match?.product ? [[match.product.name, match.product.note].filter(Boolean).join(": ")] : [] };
+  }
+  if (!post.visualBrief?.usesProductPhoto) return { paths: [], notes: [] };
+  const products = (model.expression.photos ?? []).filter((p) => p.role === "product").slice(0, 2);
+  return {
+    paths: products.map((p) => p.path),
+    notes: products.flatMap((p) => (p.product ? [[p.product.name, p.product.note].filter(Boolean).join(": ")] : [])),
+  };
+}
+
+/** Generated photo: Muse Image first (based on the brand's product photos when the post features one), then the n8n workflow. */
+export async function generatePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: MuseAspect, promptOverride?: string): Promise<PhotoRef | undefined> {
+  const imagePrompt = promptOverride ?? post.imagePrompt;
+  if (!imagePrompt) return undefined;
+
+  if (museEnabled()) {
+    const { paths, notes } = session && !promptOverride ? referencePaths(model, post) : { paths: [], notes: [] };
+    const refs = session ? (await Promise.all(paths.map((p) => imageFromStorage(session.db, "images", p, { maxSide: 1024 })))).filter((x): x is string => !!x) : [];
+    const prompt = refs.length
+      ? `Keep the product from the reference photo exactly as it looks (shape, label, colour) and place it in this scene: ${imagePrompt}${notes.length ? ` Product: ${notes.join("; ")}.` : ""}`
+      : imagePrompt;
+    const buf = await llmScope("image", { brandId: model.id }, () => museImage({ prompt, aspect, references: refs }));
+    if (buf) {
+      if (!session) return undefined; // nowhere to keep it; signed-out use falls through to n8n
+      const { urls } = await storeImage(session, model.id, buf);
+      if (urls[0]) return { kind: "generated", ref: urls[0] };
+    }
+  }
+
+  if (!n8nEnabled()) return undefined;
+  const { status, data } = await n8nRequest("generate-image", { prompt: imagePrompt, aspect, styled: true });
   if (status >= 400 || typeof data.imageUrl !== "string") {
     console.warn("[render] image generation failed", data.error);
     return undefined;
@@ -32,11 +75,46 @@ export async function generatePhoto(post: GeneratedPost, aspect: "4:5" | "1:1"):
   return { kind: "generated", ref: data.imageUrl };
 }
 
-/** Chooses where the photo comes from: a real brand photo when it fits, else a generated one. */
-export async function resolvePhoto(model: BrandModel, post: GeneratedPost, history: ContentHistory, aspect: "4:5" | "1:1"): Promise<PhotoRef | undefined> {
-  const brand = pickBrandPhoto(model, history);
-  if (brand && post.visualBrief?.usesProductPhoto) return brand;
-  return (await generatePhoto(post, aspect)) ?? brand;
+/** Prompt for one carousel slide: the post's visual brief plus what this slide says, so slides don't repeat the same scene. */
+export function slidePrompt(post: GeneratedPost, index: number): string {
+  const s = post.slides?.[index];
+  const idea = [s?.headline, s?.body].filter(Boolean).join(" — ");
+  return `${post.imagePrompt ?? ""} This image illustrates slide ${index + 1} of ${post.slides?.length ?? 1}: "${idea}". Show that idea with a different scene, angle or detail from the other slides, same style and mood.`.trim();
+}
+
+/** One generated photo per carousel slide, made in parallel to stay inside the route's time limit. */
+export async function generateSlidePhotos(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: MuseAspect): Promise<(PhotoRef | undefined)[]> {
+  const n = post.slides?.length ?? 0;
+  return Promise.all(Array.from({ length: n }, (_, i) => generatePhoto(session, model, post, aspect, slidePrompt(post, i))));
+}
+
+/** A photo for every slide: missing ones reuse the photos we have, in turn. Empty when there are none. */
+export function fillSlidePhotos<T>(photos: (T | undefined | null)[], count: number): T[] {
+  const have = photos.filter((p): p is T => !!p);
+  if (!have.length) return [];
+  return Array.from({ length: count }, (_, i) => photos[i] ?? have[i % have.length]);
+}
+
+/** Photo data URIs for Satori, with the kit's photo treatment. */
+export async function loadPhotoRefs(session: Session | null, model: BrandModel, refs: PhotoRef[]): Promise<(string | undefined)[]> {
+  const kit = layoutKitOf(model)!;
+  const duotone = kit.photoTreatment === "duotone" ? model.expression.tokens.color.primary.$value : undefined;
+  return Promise.all(
+    refs.map((r) =>
+      r.kind === "brand"
+        ? session
+          ? imageFromStorage(session.db, "images", r.ref, { maxSide: 1400, duotone })
+          : Promise.resolve(undefined)
+        : imageFromUrl(r.ref, { maxSide: 1400, duotone })
+    )
+  );
+}
+
+/** Chooses where the photo comes from: the brand's own photo whenever it has one, else a generated one. */
+export async function resolvePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, history: ContentHistory, aspect: MuseAspect): Promise<PhotoRef | undefined> {
+  const brand = pickBrandPhoto(model, history, !!post.visualBrief?.usesProductPhoto);
+  if (brand) return brand;
+  return generatePhoto(session, model, post, aspect);
 }
 
 /** Loads the photo and logo as data URIs for Satori. */
@@ -58,7 +136,15 @@ export async function loadVisuals(session: Session | null, model: BrandModel, ph
   return { photo: photoUri, logo: logoUri, logoTone: await imageTone(logoUri) };
 }
 
-const SIGN_SECONDS = 60 * 60 * 24 * 30;
+/** Product photos (images bucket) as data URIs, in order; missing ones come back undefined. */
+export async function loadSlidePhotos(session: Session | null, model: BrandModel, paths: (string | undefined)[]): Promise<(string | undefined)[]> {
+  if (!session) return paths.map(() => undefined);
+  const kit = layoutKitOf(model)!;
+  const duotone = kit.photoTreatment === "duotone" ? model.expression.tokens.color.primary.$value : undefined;
+  return Promise.all(paths.map((p) => (p ? imageFromStorage(session.db, "images", p, { maxSide: 1400, duotone }) : Promise.resolve(undefined))));
+}
+
+const SIGN_SECONDS =60 * 60 * 24 * 30;
 
 export interface EncodedImage {
   buf: Buffer;
@@ -75,9 +161,19 @@ export async function encodeForUpload(png: Buffer, quality = 90): Promise<Encode
   }
 }
 
+/** Saves an AI-generated JPEG to the images bucket (generated/ folder) and signs it. */
+export async function storeImage(s: Session, brandId: string, buf: Buffer): Promise<{ paths: string[]; urls: string[] }> {
+  const path = `${s.workspaceId}/brands/${brandId}/generated/${crypto.randomUUID()}.jpg`;
+  return uploadImages(s, brandId, [path], [{ buf, mime: "image/jpeg" }]);
+}
+
 /** Uploads rendered images to the images bucket and records them as media assets. */
 export async function storeRendered(s: Session, brandId: string, key: string, images: EncodedImage[]): Promise<{ paths: string[]; urls: string[] }> {
   const paths = images.map((img, i) => `${s.workspaceId}/brands/${brandId}/posts/${key}/${i + 1}.${img.mime === "image/png" ? "png" : "jpg"}`);
+  return uploadImages(s, brandId, paths, images);
+}
+
+async function uploadImages(s: Session, brandId: string, paths: string[], images: EncodedImage[]): Promise<{ paths: string[]; urls: string[] }> {
   await Promise.all(
     images.map(async (img, i) => {
       const { error } = await s.db.storage.from("images").upload(paths[i], img.buf, { contentType: img.mime, upsert: true });

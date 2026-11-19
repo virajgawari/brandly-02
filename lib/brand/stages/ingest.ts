@@ -1,7 +1,8 @@
 import { analyseImages, parseJSON } from "../../llm";
-import { fetchWebsiteEvidence, type WebsiteEvidence } from "../../web";
+import type { PageEvidence, WebsiteEvidence } from "../../web";
+import { crawlSite } from "../../crawl";
 import { VisualInsightsSchema, type VisualInsights } from "../schemas";
-import type { Evidence } from "../model";
+import { evidenceId, type Evidence } from "../model";
 import type { StageDefinition } from "./types";
 
 export interface IngestInput {
@@ -14,6 +15,10 @@ export interface IngestInput {
 
 export interface IngestOutput {
   website?: WebsiteEvidence;
+  /** Other same-site pages read by the crawl (home is `website`). */
+  pages?: PageEvidence[];
+  /** Home + other pages, as stored in `brand_evidence` (removed before the result reaches the browser). */
+  sitePages?: PageEvidence[];
   visual?: VisualInsights;
   igHandle?: string;
   /** Content photos found on the website, stored as brand photos after the run. */
@@ -51,10 +56,26 @@ export const ingestStage: StageDefinition<IngestInput> = {
         (async () => {
           report({ id: "site", label: "Reading your website", status: "info" });
           try {
-            const site = await fetchWebsiteEvidence(input.websiteUrl!);
+            const { home: site, pages } = await crawlSite(input.websiteUrl!, {
+              // Show what the home page already tells us while the rest of the site is still being read.
+              onHome: (h) => {
+                report({ id: "site", label: `Read ${new URL(h.url).hostname}`, detail: h.title || undefined, status: "done" });
+                if (h.logoUrl) report({ id: "logo", label: "Found your logo", status: "done", image: h.logoUrl });
+                if (h.colors.length) report({ id: "colors", label: `Found ${h.colors.length} brand colours`, status: "done", swatches: h.colors });
+                if (h.fonts.length) report({ id: "fonts", label: `Fonts: ${h.fonts.slice(0, 2).join(", ")}`, status: "done", fonts: h.fonts });
+                if (h.images.length) report({ id: "photos", label: `Found ${h.images.length} photos to use in posts`, status: "done", image: h.images[0], images: h.images.slice(0, 8) });
+              },
+              onPage: (read, max) => report({ id: "pages", label: `Read ${read} of up to ${max} pages`, status: "info" }),
+            });
             output.website = site;
-            output.photoUrls = site.images;
-            if (site.images.length) report({ id: "photos", label: `Found ${site.images.length} photos to use in posts`, status: "done", image: site.images[0] });
+            output.pages = pages;
+            output.sitePages = [
+              { url: site.url, title: site.title, description: site.description, headings: site.headings, text: site.copySample, images: site.images.slice(0, 8) },
+              ...pages,
+            ];
+            output.photoUrls = [...new Set([...site.images, ...pages.flatMap((p) => p.images)])].slice(0, 20);
+            if (pages.length) report({ id: "pages", label: `Read ${pages.length + 1} pages of your website`, status: "done" });
+            if (site.images.length) report({ id: "photos", label: `Found ${site.images.length} photos to use in posts`, status: "done", image: site.images[0], images: output.photoUrls.slice(0, 8) });
             report({ id: "site", label: `Read ${new URL(site.url).hostname}`, detail: site.title || undefined, status: "done" });
             if (site.logoUrl) report({ id: "logo", label: "Found your logo", status: "done", image: site.logoUrl });
             else report({ id: "logo", label: "No logo found on the site", detail: "You can upload one later", status: "warn" });
@@ -63,6 +84,7 @@ export const ingestStage: StageDefinition<IngestInput> = {
             if (site.fonts.length) report({ id: "fonts", label: `Fonts: ${site.fonts.slice(0, 2).join(", ")}`, status: "done", fonts: site.fonts });
             report({ id: "copy", label: `Read ${site.headings.length} headlines and the page copy`, status: "done" });
             evidence.push({
+              id: evidenceId("website", site.url),
               source: "website",
               url: site.url,
               summary: [site.title, site.description].filter(Boolean).join(" — "),
@@ -72,6 +94,15 @@ export const ingestStage: StageDefinition<IngestInput> = {
               copySample: site.copySample.slice(0, 1500),
               capturedAt: now,
             });
+            for (const p of pages) {
+              evidence.push({
+                id: evidenceId("website", p.url),
+                source: "website",
+                url: p.url,
+                summary: [p.title, p.description].filter(Boolean).join(" — "),
+                capturedAt: now,
+              });
+            }
           } catch (err) {
             report({
               id: "site",
@@ -100,8 +131,10 @@ export const ingestStage: StageDefinition<IngestInput> = {
               status: "done",
               swatches: visual.colors.slice(0, 6),
             });
+            const visualSource = input.imageSource === "instagram" ? "instagram" : input.imageSource === "pdf" ? "pdf" : "upload";
             evidence.push({
-              source: input.imageSource === "instagram" ? "instagram" : input.imageSource === "pdf" ? "pdf" : "upload",
+              id: evidenceId(visualSource),
+              source: visualSource,
               summary: [visual.visualStyle, visual.motifs].filter(Boolean).join(" "),
               colors: visual.colors,
               capturedAt: now,

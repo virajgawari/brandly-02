@@ -13,10 +13,12 @@ export const LAYOUT_LABELS: Record<LayoutId, string> = {
   "myth-fact": "Myth / fact",
   "carousel-cover": "Carousel cover",
   "carousel-slide": "Carousel slide",
+  "product-cover": "Product carousel cover",
+  "product-slide": "Product slide",
 };
 
-/** Layouts a user can turn on/off (carousel slides follow the cover). */
-export const SELECTABLE_LAYOUTS = LAYOUT_IDS.filter((l) => l !== "carousel-slide");
+/** Layouts a user can turn on/off (carousel slides follow the cover; product layouts are made on demand). */
+export const SELECTABLE_LAYOUTS = LAYOUT_IDS.filter((l) => l !== "carousel-slide" && l !== "product-cover" && l !== "product-slide");
 
 /**
  * A sensible kit derived from personality and palette, used until the
@@ -25,9 +27,9 @@ export const SELECTABLE_LAYOUTS = LAYOUT_IDS.filter((l) => l !== "carousel-slide
 export function defaultLayoutKit(m: BrandModel): LayoutKit {
   const p = m.personality;
   const c = m.expression.tokens.color;
-  const sophisticated = p.sophistication >= 0.6;
-  const rugged = p.ruggedness >= 0.55;
-  const exciting = p.excitement >= 0.6;
+  const sophisticated = p.sophistication >= 60;
+  const rugged = p.ruggedness >= 55;
+  const exciting = p.excitement >= 60;
   // A dark, saturated primary makes a strong background; a pale one does not.
   const primaryL = hexToHsl(c.primary.$value).l;
   const background: ColorRole = primaryL < 0.6 && contrastRatio(c.primary.$value, "#FFFFFF") >= 3 ? "primary" : "neutral";

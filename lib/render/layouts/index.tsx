@@ -1,5 +1,6 @@
 import { CarouselCover, CarouselSlide } from "./carousel";
 import { FullBleed, Framed, PhotoBand, Split } from "./photo";
+import { ProductCover, ProductSlide } from "./product";
 import type { LayoutRegistry } from "./shared";
 import { BigNumber, Checklist, MythFact, Quote } from "./text";
 
@@ -16,4 +17,6 @@ export const LAYOUTS: LayoutRegistry = {
   "myth-fact": MythFact,
   "carousel-cover": CarouselCover,
   "carousel-slide": CarouselSlide,
+  "product-cover": ProductCover,
+  "product-slide": ProductSlide,
 };

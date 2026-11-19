@@ -1,51 +1,43 @@
 # Brandly — AI-Powered Brand Content Platform
 
-A production-ready Next.js app for internal marketing teams to build Brand DNA profiles, generate on-brand social content, schedule posts, and automate publishing.
+A Next.js app that builds a Brand Model for a business, generates on-brand social posts, schedules them and publishes through Postiz. Data lives in Supabase; text AI runs on Groq, Gemini or Claude with automatic fallback.
 
 ## Features
 
-- **Brand Intelligence** — Crawl website, Instagram, and PDF catalogues (raster + vector) to auto-build a Brand DNA profile
-- **AI Composer** — Generate full post packages (caption, hashtags, image prompt, CTA, best time) for Instagram, Facebook, LinkedIn, and X/Twitter
-- **Visual Calendar** — Monthly and weekly calendar views with scheduling, drag-to-reschedule, and status tracking
-- **Automation** — RSS feed triggers, recurring post schedules, and product update watchers
+- **Brand Intelligence** — crawl a website, Instagram and PDF catalogues to build a Brand Model (strategy, identity, voice, content pillars, layout kit)
+- **AI Composer** — full post packages (caption, hashtags, CTA, visual brief, best time) for Instagram, Facebook, LinkedIn and X, with a rotating brief so posts don't repeat
+- **Visual Calendar** — month/week views, scheduling, status tracking
+- **Automation** — RSS and product-page triggers and recurring schedules, run by a Postgres jobs queue drained by cron
 
 ## Tech Stack
 
-- **Framework**: Next.js 15 (App Router)
-- **AI**: Anthropic Claude (claude-opus-4-5) via `@anthropic-ai/sdk`
-- **State**: Zustand with localStorage persistence
-- **Styling**: Tailwind CSS
-- **PDF Processing**: PDF.js (browser-side page rasterisation — captures raster images AND vector layers)
+- **Framework**: Next.js 15 (App Router), TypeScript, Tailwind CSS
+- **Data and auth**: Supabase (Postgres, RLS, email sign-in). Every API route requires a session
+- **AI**: Groq (primary), Gemini (PDFs, screenshots, backup), Anthropic Claude (optional), via `lib/llm.ts`. Models and order are set in `.env.example`
+- **Publishing**: Postiz, directly or through the optional n8n workflow (`n8n/README.md`)
+- **Tests**: Vitest (`npm test`)
 
 ## Setup
 
-### 1. Install dependencies
-
 ```bash
 npm install
-```
-
-### 2. Configure environment variables
-
-```bash
-cp .env.example .env.local
-```
-
-Edit `.env.local` and add your Anthropic API key:
-
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-Get your key at: https://console.anthropic.com
-
-### 3. Run the development server
-
-```bash
+cp .env.example .env.local     # then fill in the keys
+npm run db:migrate             # applies supabase/migrations/*.sql using DATABASE_URL
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Required in `.env.local`: the Supabase URL, publishable key, secret key and `DATABASE_URL`, plus at least one of `GROQ_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`. `CRON_SECRET` is needed for `/api/cron/*`. The dev server uses port 3000 unless it is taken.
+
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` / `build` / `start` | Next.js |
+| `npm test` | Vitest unit tests (`tests/`) |
+| `npm run db:migrate` | Apply new SQL migrations |
+| `npm run db:test` | Check the signup trigger and workspace isolation (rolled-back transaction) |
+| `npm run eval -- --dry` | Replay the fixed briefs in `evals/briefs/` with no LLM calls |
+| `npm run eval -- --limit 2 --delay 20 --tag name` | Real generation, scored and stored in `eval_runs`. Add `--no-db` to skip storing. Mind provider rate limits on free keys |
 
 ## Database & sign-in (Supabase)
 
@@ -73,60 +65,37 @@ Analysis views: `v_post_quality`, `v_cost_per_brand`, `v_field_accuracy`. Fill `
 ## Project Structure
 
 ```
-brandly/
-├── app/
-│   ├── page.tsx                    # Dashboard
-│   ├── onboarding/page.tsx         # Brand Intelligence (5-step flow)
-│   ├── composer/page.tsx           # AI Content Composer
-│   ├── calendar/page.tsx           # Visual Calendar + Scheduling
-│   ├── automation/page.tsx         # Automation rules
-│   └── api/
-│       ├── analyse-brand/route.ts  # Brand DNA synthesis
-│       ├── analyse-pdf/route.ts    # PDF Vision analysis
-│       ├── generate-post/route.ts  # Full post package generation
-│       └── automation/route.ts     # Trigger execution
-├── components/
-│   ├── layout/                     # Sidebar, AppShell
-│   ├── composer/                   # PlatformPreview
-│   └── ui/                         # Button, Input, Card, Chip, etc.
-├── lib/
-│   ├── types.ts                    # All TypeScript types
-│   ├── claude.ts                   # Anthropic SDK wrapper
-│   ├── store.ts                    # Zustand global state
-│   └── templates.ts                # Content templates + platform config
+app/
+  api/                  # Route handlers: analyse-brand, generate-post, posts, publish, cron, jobs, ...
+  composer/ calendar/ automation/ onboarding/ brand/ login/ signup/
+components/             # layout, composer, ui
+lib/
+  brand/                # Brand Model, merge, schemas, build pipeline
+  content/              # post brief, prompt, history, generation
+  db/                   # session, brands, LLM scope
+  jobs/                 # Postgres queue and handlers
+  net/safe-fetch.ts     # SSRF guard for user-supplied URLs
+  llm.ts, llm-log.ts    # providers, fallback, call logging
+  templates.ts          # content templates and platform limits
+evals/                  # fixture brands, briefs, scoring
+scripts/                # migrate, RLS test, eval runner
+supabase/migrations/    # schema
+tests/                  # Vitest
+n8n/                    # optional backend workflow
 ```
 
 ## PDF Processing
 
-Brandly handles both types of PDF content:
+PDF pages are rasterised in the browser with PDF.js (raster and vector layers) and sent to a vision model as JPEGs. Up to 8 pages are analysed per PDF.
 
-- **Raster images** (embedded JPEGs/PNGs) — captured via PDF.js canvas rendering
-- **Vector / layered content** (shapes, illustrations, text overlays, gradients) — captured by rasterising the full page at 1.8x scale
+## Deployment (Vercel)
 
-Pages are sent to Claude Vision as base64 JPEGs. Up to 8 pages are analysed per PDF.
+1. Push to GitHub and import the repo in Vercel.
+2. Add the environment variables from `.env.example`, including `CRON_SECRET`.
+3. `vercel.json` schedules `/api/cron/schedule` and `/api/cron/drain` daily, which is the most the Hobby plan allows.
 
-## Production Deployment
+## Known gaps
 
-### Vercel (recommended)
-
-1. Push to GitHub
-2. Import in Vercel
-3. Add `ANTHROPIC_API_KEY` to environment variables
-4. Deploy
-
-### Persistence
-
-Currently uses Zustand + localStorage for state. For production multi-user use, replace with:
-- **Supabase** (PostgreSQL + Auth + Storage) — recommended
-- **PlanetScale** or **Neon** for DB only
-
-See `.env.example` for Supabase config placeholders.
-
-## Roadmap (Phase 2+)
-
-- [ ] Media library with AI image generation (DALL-E / Midjourney)
-- [ ] Team collaboration + approval flows
-- [ ] Social API connections (Meta Graph, LinkedIn, X API)
-- [ ] Analytics dashboard
-- [ ] Ecommerce integrations (Shopify, WooCommerce)
-- [ ] White-label / multi-workspace
+- No invite/accept UI yet, so a workspace has a single member.
+- `safe-fetch` validates the address before each request but does not pin the IP, so DNS rebinding is not fully closed.
+- Social API connections other than Postiz, analytics, and ecommerce integrations are not built.

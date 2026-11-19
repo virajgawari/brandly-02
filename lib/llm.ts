@@ -4,11 +4,13 @@ import type { z, ZodTypeAny } from "zod";
 import { currentLlmContext, persistRecord, startRecord, hashText, type LlmCallRecord } from "./llm-log";
 
 // Singleton clients, instantiated once per server process
-const anthropicClient = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null;
-const geminiClient = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
-const groqKey = process.env.GROQ_API_KEY || null;
+/** Ignores unset values and copied placeholders like "your_anthropic_api_key_here". */
+const realKey = (v?: string) => (v && !/^your_|_here$|^changeme$|^xxx/i.test(v.trim()) ? v.trim() : null);
+const anthropicKey = realKey(process.env.ANTHROPIC_API_KEY);
+const geminiKey = realKey(process.env.GEMINI_API_KEY);
+const anthropicClient = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
+const geminiClient = geminiKey ? new GoogleGenerativeAI(geminiKey) : null;
+const groqKey = realKey(process.env.GROQ_API_KEY);
 
 type Provider = "claude" | "groq" | "gemini";
 
@@ -28,7 +30,9 @@ interface LlmReply {
 //   fast     → extraction, scoring, captions, everyday posts (cheap, high volume)
 //   vision   → PDF pages, screenshots (Groq has no vision model, so Gemini/Claude)
 //   creative → brand synthesis and Build "directions" (once per brand)
-export type LlmTask = "fast" | "vision" | "creative";
+//   judge    → rating text against a rubric. Gemini first so the judge is a different model
+//              family from the writers (Groq first); Groq is the fallback, never Claude by default.
+export type LlmTask = "fast" | "vision" | "creative" | "judge";
 
 const list = (env: string | undefined, fallback: string[]) =>
   env ? env.split(",").map((m) => m.trim()).filter(Boolean) : fallback;
@@ -53,6 +57,12 @@ export const MODELS: Record<LlmTask, { order: Provider[] } & Record<Provider, st
     groq: list(process.env.MODEL_CREATIVE_GROQ, ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"]),
     claude: list(process.env.MODEL_CREATIVE_CLAUDE, ["claude-sonnet-5-5"]),
     gemini: list(process.env.MODEL_CREATIVE_GEMINI, ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash"]),
+  },
+  judge: {
+    order: ["gemini", "groq", "claude"],
+    groq: list(process.env.MODEL_JUDGE_GROQ, ["openai/gpt-oss-120b"]),
+    claude: list(process.env.MODEL_JUDGE_CLAUDE, []),
+    gemini: list(process.env.MODEL_JUDGE_GEMINI, ["gemini-3.8-flash", "gemini-3.1-flash-lite"]),
   },
 };
 

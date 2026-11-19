@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
 import { PlatformIcon, TemplateIcon, TriggerIcon } from "@/components/ui/icons";
+import InsightsCard from "@/components/agent/InsightsCard";
+import ScoreboardCard from "@/components/agent/ScoreboardCard";
 import AppShell from "@/components/layout/AppShell";
 import { useStore } from "@/lib/store";
 import { Button, Input, Card, Chip, SectionLabel, PageHeader, EmptyState } from "@/components/ui";
@@ -158,21 +160,29 @@ export default function AutomationPage() {
 
   return (
     <AppShell>
-      <div className="p-8 max-w-5xl mx-auto">
+      <div className="p-4 sm:p-8 max-w-5xl mx-auto">
         <PageHeader
           title="Automation"
-          subtitle={`Auto-generate content for ${brand.name}`}
+          subtitle={`Posts that write themselves for ${brand.name}`}
           action={
-            <Button onClick={() => setShowForm(true)}>+ New Rule</Button>
+            brandRules.length > 0 ? (
+              <Button onClick={() => setShowForm(true)}>New rule</Button>
+            ) : undefined
           }
         />
 
+        <div className="grid gap-6 md:grid-cols-2 mb-8">
+          <InsightsCard brandId={brand.id} />
+          <ScoreboardCard brandId={brand.id} />
+        </div>
+
         {/* Stats row */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        {brandRules.length > 0 && (
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-8">
           {[
-            ["Active Rules", brandRules.filter((r) => r.status === "active").length, "text-success"],
-            ["Total Posts Generated", brandRules.reduce((a, r) => a + r.postsGenerated, 0), "text-accent-light"],
-            ["Paused Rules", brandRules.filter((r) => r.status === "paused").length, "text-text-muted"],
+            ["Active", brandRules.filter((r) => r.status === "active").length, "text-success"],
+            ["Posts written", brandRules.reduce((a, r) => a + r.postsGenerated, 0), "text-accent-light"],
+            ["Paused", brandRules.filter((r) => r.status === "paused").length, "text-text-muted"],
           ].map(([label, value, color]) => (
             <Card key={label as string} className="p-4 text-center">
               <p className={`text-3xl font-bold mb-1 ${color as string}`}>{value as number}</p>
@@ -180,12 +190,13 @@ export default function AutomationPage() {
             </Card>
           ))}
         </div>
+        )}
 
         {/* ── New rule form ── */}
         {showForm && (
           <Card className="p-6 mb-6 border-accent/30">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="font-semibold text-lg">New Automation Rule</h3>
+              <h3 className="font-semibold text-lg">New rule</h3>
               <button onClick={() => setShowForm(false)} className="text-text-muted hover:text-text text-xl">×</button>
             </div>
 
@@ -318,9 +329,9 @@ export default function AutomationPage() {
         {/* ── Rules list ── */}
         {brandRules.length === 0 && !showForm ? (
           <EmptyState
-            title="No automation rules yet"
-            description="Set up RSS feeds, recurring posts, or product update triggers to auto-generate content."
-            action={<Button onClick={() => setShowForm(true)}>+ Create First Rule</Button>}
+            title="No rules yet"
+            description="A rule writes posts for you on a schedule, when a feed updates, or when a product changes."
+            action={<Button onClick={() => setShowForm(true)}>Create a rule</Button>}
           />
         ) : (
           <div className="space-y-4">
@@ -413,12 +424,12 @@ export default function AutomationPage() {
 
         {/* How it works */}
         <Card className="mt-8 p-6">
-          <h3 className="font-semibold mb-4">How Automation Works</h3>
-          <div className="grid grid-cols-3 gap-6">
+          <h3 className="font-semibold mb-4">How it works</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
             {[
-              ["1. Trigger fires", "RSS feed publishes an article, your recurring schedule hits, or a new product is detected."],
+              ["1. Something happens", "RSS feed publishes an article, your recurring schedule hits, or a new product is detected."],
               ["2. Brandly writes the post", "It uses your brand profile, so the caption, hashtags, image idea and call to action sound like you."],
-              ["3. Scheduled & posted", "The post is added to your calendar queue and published at the optimal time."],
+              ["3. It lands on your calendar", "The post is added to your calendar queue."],
             ].map(([title, desc]) => (
               <div key={title as string}>
                 <p className="font-semibold text-sm mb-1 text-accent-light">{title as string}</p>

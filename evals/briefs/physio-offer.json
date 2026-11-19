@@ -1,0 +1,8 @@
+{
+  "id": "physio-offer",
+  "brand": "physio",
+  "platforms": ["instagram","facebook"],
+  "template": "announcement",
+  "topic": "free posture check this month",
+  "seed": 24
+}

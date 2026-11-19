@@ -13,7 +13,9 @@ export type VersionSource = "user" | "stage" | "build";
 
 export interface Account {
   user: { id: string; email?: string; name: string | null };
-  workspace: { id: string; name: string; plan: string; data_training_opt_in: boolean };
+  workspace: { id: string; name: string; plan: string; data_training_opt_in: boolean; ai_watermark?: boolean; email_prefs?: { weekly?: boolean; product?: boolean } };
+  /** The user's role in this workspace (owner, admin, editor, viewer). */
+  role?: string | null;
 }
 
 interface AppState {
@@ -38,7 +40,7 @@ interface AppState {
 
   // Posts
   posts: ScheduledPost[];
-  addPost: (post: ScheduledPost, meta?: { template?: string; topic?: string }) => void;
+  addPost: (post: ScheduledPost, meta?: { template?: string; topic?: string; productId?: string }) => void;
   updatePost: (id: string, updates: Partial<ScheduledPost>) => void;
   deletePost: (id: string) => void;
   getPostsByBrand: (brandId: string) => ScheduledPost[];
@@ -109,7 +111,7 @@ export const useStore = create<AppState>()(
           set({
             hydrated: true,
             loadError: null,
-            account: { user: data.user, workspace: data.workspace },
+            account: { user: data.user, workspace: data.workspace, role: data.role },
             brands,
             posts: data.posts,
             automationRules: data.rules,

@@ -8,7 +8,7 @@ import { layoutKitOf } from "./kit";
 import { LAYOUTS, type LayoutProps } from "./layouts";
 import { applyShow, type ShowFlags } from "./show";
 
-export type RenderSize = "1080x1350" | "1080x1080";
+export type RenderSize = "1080x1350" | "1080x1080" | "1080x1920";
 
 export interface RenderInput {
   model: BrandModel;

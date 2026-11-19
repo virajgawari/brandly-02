@@ -73,7 +73,7 @@ export interface RenderedMedia {
   paths: string[];
   /** Signed URLs for display (re-signed from `paths` before publishing). */
   urls: string[];
-  size: "1080x1350" | "1080x1080";
+  size: "1080x1350" | "1080x1080" | "1080x1920";
   /** The photo used inside the layout (brand photo path or generated image URL). */
   photo?: { kind: "brand" | "generated"; ref: string };
   /** Elements hidden on the image (all shown when absent). */

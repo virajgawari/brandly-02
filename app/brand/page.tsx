@@ -16,6 +16,7 @@ import { LogoUpload } from "@/components/brand/LogoUpload";
 import { ChannelsSection } from "@/components/brand/ChannelsSection";
 import { useStore } from "@/lib/store";
 import { fromBrandDNA } from "@/lib/brand/projection";
+import { profileCompleteness } from "@/lib/brand/completeness";
 import { isLocked, mergePatch, sectionConfidence, setLock } from "@/lib/brand/merge";
 import { AGE_GROUPS, MOMENTS, MOTIVATIONS, type BrandModel, type ModelPatch, type Tone } from "@/lib/brand/model";
 import { AFFLUENCE_OPTIONS, AGE_LABELS, complianceFor, GENDER_OPTIONS, LANGUAGE_OPTIONS, MOMENT_LABELS, MOTIVATION_LABELS } from "@/lib/brand/audience";
@@ -78,7 +79,9 @@ function BrandProfile() {
     return (sc.source !== "user" && !sc.locked && sc.confidence > 0 && sc.confidence < NEEDS_CHECK) || (s === "strategy.audience" && sc.confidence === 0);
   });
 
-  const refreshVoiceLine = (m: BrandModel) => {
+  const completeness = profileCompleteness(model);
+
+  const refreshVoiceLine =(m: BrandModel) => {
     clearTimeout(voiceTimer.current);
     voiceTimer.current = setTimeout(async () => {
       setVoiceLoading(true);
@@ -130,6 +133,23 @@ function BrandProfile() {
           </Button>
         </Link>
       </div>
+
+      {completeness.percent < 100 && (
+        <div className="rounded-xl border border-border bg-card px-4 py-3 mb-6">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <p className="font-medium">Profile {completeness.percent}% complete</p>
+            <p className="text-xs text-text-muted truncate">
+              Next:{" "}
+              <button type="button" onClick={() => goToSection(completeness.missing[0].section)} className="underline underline-offset-2 hover:text-text">
+                {completeness.missing[0].label}
+              </button>
+            </p>
+          </div>
+          <div className="h-1.5 rounded-full bg-text/10 mt-2 overflow-hidden" role="progressbar" aria-valuenow={completeness.percent} aria-valuemin={0} aria-valuemax={100}>
+            <div className="h-full bg-text rounded-full" style={{ width: `${completeness.percent}%` }} />
+          </div>
+        </div>
+      )}
 
       {(welcome || toCheck.length > 0) && (
         <div className={clsx("rounded-xl border px-4 py-3 mb-6 text-sm flex items-start gap-3", toCheck.length ? "border-warn/30 bg-warn/[0.06]" : "border-border bg-card")}>

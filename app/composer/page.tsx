@@ -1,4 +1,5 @@
 "use client";
+import { downloadImage } from "@/lib/download";
 import { useEffect, useRef, useState } from "react";
 import { PlatformIcon, TemplateIcon } from "@/components/ui/icons";
 import AppShell from "@/components/layout/AppShell";
@@ -517,7 +518,7 @@ export default function ComposerPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-text-muted">Size</span>
                       <div className="flex gap-1" role="group" aria-label="Image size">
-                        {(["1080x1350", "1080x1080"] as const).map((sz) => (
+                        {(["1080x1350", "1080x1080", "1080x1920"] as const).map((sz) => (
                           <button
                             key={sz}
                             aria-pressed={size === sz}
@@ -527,7 +528,7 @@ export default function ComposerPage() {
                             }}
                             className={`text-xs px-3 py-1 rounded-full border ${size === sz ? "bg-accent/10 border-accent/40 text-accent-light" : "border-border text-text-muted hover:text-text"}`}
                           >
-                            {sz === "1080x1350" ? "4:5" : "1:1"}
+                            {sz === "1080x1350" ? "4:5" : sz === "1080x1080" ? "1:1" : "9:16"}
                           </button>
                         ))}
                       </div>
@@ -613,6 +614,7 @@ export default function ComposerPage() {
                       />
                     </div>
                     <div className="flex gap-2">
+                      {rendered?.urls?.[0] && <Button variant="ghost" onClick={() => downloadImage(rendered.urls[0], "brandly-post.png")}>Download</Button>}
                       <Button variant="ghost" onClick={() => schedulePost("draft")} disabled={saved || saving}>Save Draft</Button>
                       <Button onClick={() => schedulePost("scheduled")} disabled={saved || saving} loading={saving}>{saved ? "Scheduled" : "Schedule Post"}</Button>
                     </div>

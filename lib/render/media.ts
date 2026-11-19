@@ -7,7 +7,7 @@ import { n8nEnabled, n8nRequest } from "@/lib/n8n";
 import type { GeneratedPost, RenderedMedia } from "@/lib/types";
 import { imageFromStorage, imageFromUrl, imageTone } from "./assets";
 import { layoutKitOf } from "./kit";
-import { museEnabled, museImage } from "./muse";
+import { museEnabled, museImage, type MuseAspect } from "./muse";
 
 export type PhotoRef = NonNullable<RenderedMedia["photo"]>;
 
@@ -39,7 +39,7 @@ function referencePaths(model: BrandModel, post: GeneratedPost): { paths: string
 }
 
 /** Generated photo: Muse Image first (based on the brand's product photos when the post features one), then the n8n workflow. */
-export async function generatePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: "4:5" | "1:1", promptOverride?: string): Promise<PhotoRef | undefined> {
+export async function generatePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: MuseAspect, promptOverride?: string): Promise<PhotoRef | undefined> {
   const imagePrompt = promptOverride ?? post.imagePrompt;
   if (!imagePrompt) return undefined;
 
@@ -74,7 +74,7 @@ export function slidePrompt(post: GeneratedPost, index: number): string {
 }
 
 /** One generated photo per carousel slide, made in parallel to stay inside the route's time limit. */
-export async function generateSlidePhotos(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: "4:5" | "1:1"): Promise<(PhotoRef | undefined)[]> {
+export async function generateSlidePhotos(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: MuseAspect): Promise<(PhotoRef | undefined)[]> {
   const n = post.slides?.length ?? 0;
   return Promise.all(Array.from({ length: n }, (_, i) => generatePhoto(session, model, post, aspect, slidePrompt(post, i))));
 }
@@ -102,7 +102,7 @@ export async function loadPhotoRefs(session: Session | null, model: BrandModel, 
 }
 
 /** Chooses where the photo comes from: a real brand photo when it fits, else a generated one. */
-export async function resolvePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, history: ContentHistory, aspect: "4:5" | "1:1"): Promise<PhotoRef | undefined> {
+export async function resolvePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, history: ContentHistory, aspect: MuseAspect): Promise<PhotoRef | undefined> {
   const brand = pickBrandPhoto(model, history);
   if (brand && post.visualBrief?.usesProductPhoto) return brand;
   return (await generatePhoto(session, model, post, aspect)) ?? brand;

@@ -6,6 +6,7 @@ import { useStore } from "@/lib/store";
 import { Button, Card, Chip, SectionLabel, PageHeader, EmptyState } from "@/components/ui";
 import Link from "next/link";
 import PostMetricsForm from "@/components/agent/PostMetricsForm";
+import { downloadImage } from "@/lib/download";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
   startOfWeek, endOfWeek, isSameMonth, isSameDay, parseISO,
@@ -103,7 +104,7 @@ const DroppableDay: React.FC<DroppableDayProps> = ({ day, children, onDropPost, 
 
 
 export default function CalendarPage() {
-  const { getActiveBrand, posts, updatePost, deletePost } = useStore();
+  const { getActiveBrand, posts, updatePost, deletePost, addPost } = useStore();
   const brand = getActiveBrand();
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -447,6 +448,29 @@ export default function CalendarPage() {
                         ✓ Mark Published
                       </Button>
                     )}
+                    {selectedPost.mediaUrl && (
+                      <Button variant="secondary" size="sm" onClick={() => downloadImage(selectedPost.mediaUrl!, `brandly-${selectedPost.id.slice(0, 8)}.png`)}>
+                        Download
+                      </Button>
+                    )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        // A fresh draft with the same content, a day after the original, with no metrics or publication history.
+                        const copy = {
+                          ...selectedPost,
+                          id: crypto.randomUUID(),
+                          status: "draft" as const,
+                          scheduledAt: new Date(new Date(selectedPost.scheduledAt).getTime() + 86_400_000).toISOString(),
+                          createdAt: new Date().toISOString(),
+                        };
+                        addPost(copy);
+                        setSelectedPost(copy);
+                      }}
+                    >
+                      Duplicate
+                    </Button>
                     <Button
                       variant="danger"
                       size="sm"

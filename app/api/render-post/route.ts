@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     const b = (await req.json()) as Body;
     if (!b.brandModel?.expression || !b.post) return NextResponse.json({ error: "brandModel and post are required" }, { status: 400 });
     const model = b.brandModel;
-    const size: RenderSize = b.size === "1080x1080" ? "1080x1080" : "1080x1350";
+    const size: RenderSize = b.size === "1080x1080" || b.size === "1080x1920" ? b.size : "1080x1350";
     const session = await requireSession();
 
     const show = cleanShow(b.show);
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
         ? wanted
         : chooseLayout(kit, b.post.format, history, { carousel: (b.post.slides?.length ?? 0) >= 2 });
 
-    const aspect = size === "1080x1080" ? "1:1" : "4:5";
+    const aspect = size === "1080x1080" ? "1:1" : size === "1080x1920" ? "9:16" : "4:5";
     const isProduct = layout === "product-cover";
     let photo: PhotoRef | undefined = typeof b.photo === "object" && b.photo ? b.photo : undefined;
     const slideCount = b.post.slides?.length ?? 0;

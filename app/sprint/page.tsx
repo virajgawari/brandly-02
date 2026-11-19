@@ -10,7 +10,7 @@ import type { GeneratedPost, Platform, RenderedMedia, ScheduledPost, TemplateCat
 
 const SIZE_OF: Record<CampaignRatio, RenderedMedia["size"]> = { "4:5": "1080x1350", "1:1": "1080x1080", "9:16": "1080x1920" };
 
-type Slot = { status: "writing" | "done" | "failed"; post?: GeneratedPost; generationId?: string; error?: string };
+type Slot = { status: "writing" | "done" | "failed"; id?: string; post?: GeneratedPost; generationId?: string; error?: string; imaging?: boolean };
 
 /** Sprint: one sentence in, an editable brief, then a short run of posts that build on each other. */
 export default function SprintPage() {
@@ -76,11 +76,26 @@ export default function SprintPage() {
             body: JSON.stringify({ brandDNA: brand.dna, brandModel: model, template: p.template, topic: campaignTopic(brief, p), platforms }),
           });
           const data = await res.json().catch(() => ({}));
-          slot = data.post ? { status: "done", post: data.post, generationId: data.generationId } : { status: "failed", error: data.error ?? "Couldn't write this one." };
+          slot = data.post ? { status: "done", id: crypto.randomUUID(), post: data.post, generationId: data.generationId, imaging: true } : { status: "failed", error: data.error ?? "Couldn't write this one." };
         } catch (e) {
           slot = { status: "failed", error: e instanceof Error ? e.message : String(e) };
         }
         setSlots((s) => s.map((x, j) => (j === i ? slot : x)));
+        if (slot.status !== "done" || !slot.post) return;
+        // Make the image right away so the sprint shows finished posts, not just text.
+        let post = slot.post;
+        try {
+          const res = await fetch("/api/render-post", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ brandModel: model, post, layout: post.layout, photo: "auto", size: SIZE_OF[brief.ratio], store: true, key: slot.id }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (data.rendered) post = { ...post, layout: data.rendered.layout, rendered: data.rendered };
+        } catch {
+          /* keep the text; it can be opened in Create */
+        }
+        setSlots((s) => s.map((x, j) => (j === i ? { ...x, post, imaging: false } : x)));
       })
     );
     setSeconds(Math.round((Date.now() - t0) / 1000));
@@ -96,19 +111,8 @@ export default function SprintPage() {
     for (let i = 0; i < slots.length; i++) {
       const s = slots[i];
       if (s.status !== "done" || !s.post) continue;
-      const id = crypto.randomUUID();
-      let content: GeneratedPost = s.post;
-      try {
-        const res = await fetch("/api/render-post", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ brandModel: model, post: s.post, layout: s.post.layout, photo: "auto", size: SIZE_OF[brief.ratio], store: true, key: id }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (data.rendered) content = { ...s.post, layout: data.rendered.layout, rendered: data.rendered };
-      } catch {
-        /* keep the draft without an image; it can be opened in Create */
-      }
+      const id = s.id ?? crypto.randomUUID();
+      const content: GeneratedPost = s.post;
       const scheduled: ScheduledPost = {
         id,
         brandId: brand.id,
@@ -159,6 +163,11 @@ export default function SprintPage() {
                   <Input value={p.pitch} onChange={(e) => patchPost(i, { pitch: e.target.value })} />
                   {slots[i]?.status === "writing" && <p className="text-xs text-text-muted">Writing…</p>}
                   {slots[i]?.status === "failed" && <p className="text-xs text-error">{slots[i].error}</p>}
+                  {slots[i]?.imaging && <p className="text-xs text-text-muted">Making the image…</p>}
+                  {slots[i]?.post?.rendered?.urls[0] && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={slots[i].post!.rendered!.urls[0]} alt={slots[i].post!.headline || `Post ${i + 1}`} className="w-40 rounded-lg border border-border" />
+                  )}
                   {slots[i]?.post && (
                     <div className="text-sm bg-surface-2 rounded-lg p-3">
                       {slots[i].post!.headline && <p className="font-medium">{slots[i].post!.headline}</p>}
@@ -170,7 +179,7 @@ export default function SprintPage() {
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <Button loading={running} onClick={run}>{slots.length ? "Write again" : "Confirm and write posts"}</Button>
-              {written > 0 && !running && (
+              {written > 0 && !running && !slots.some((x) => x.imaging) && (
                 <Button variant="secondary" loading={saving} disabled={saved} onClick={saveAll}>
                   {saved ? "Saved to calendar" : `Save ${written} as drafts`}
                 </Button>

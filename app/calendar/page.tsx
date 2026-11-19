@@ -5,6 +5,7 @@ import AppShell from "@/components/layout/AppShell";
 import { useStore } from "@/lib/store";
 import { Button, Card, Chip, SectionLabel, PageHeader, EmptyState } from "@/components/ui";
 import Link from "next/link";
+import UpcomingPosts from "@/components/calendar/UpcomingPosts";
 import PostMetricsForm from "@/components/agent/PostMetricsForm";
 import { downloadImage } from "@/lib/download";
 import {
@@ -350,6 +351,7 @@ export default function CalendarPage() {
 
             {/* ── Right: Post detail / Stats ── */}
             <div className="lg:col-span-1 space-y-5">
+              {brand && <UpcomingPosts brandId={brand.id} />}
               {/* Legend */}
               <Card className="p-4">
                 <SectionLabel>Status</SectionLabel>

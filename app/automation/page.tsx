@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
 import { PlatformIcon, TemplateIcon, TriggerIcon } from "@/components/ui/icons";
+import InsightsCard from "@/components/agent/InsightsCard";
+import ScoreboardCard from "@/components/agent/ScoreboardCard";
 import AppShell from "@/components/layout/AppShell";
 import { useStore } from "@/lib/store";
 import { Button, Input, Card, Chip, SectionLabel, PageHeader, EmptyState } from "@/components/ui";
@@ -168,6 +170,11 @@ export default function AutomationPage() {
             ) : undefined
           }
         />
+
+        <div className="grid gap-6 md:grid-cols-2 mb-8">
+          <InsightsCard brandId={brand.id} />
+          <ScoreboardCard brandId={brand.id} />
+        </div>
 
         {/* Stats row */}
         {brandRules.length > 0 && (

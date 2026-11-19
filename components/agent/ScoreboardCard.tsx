@@ -36,7 +36,7 @@ export default function ScoreboardCard({ brandId }: { brandId: string }) {
   return (
     <Card className="p-5">
       <h2 className="font-medium mb-1">Is the brand check right?</h2>
-      <p className="text-xs text-text-muted mb-4">Brandly's fit score for each post against what your audience did with it.</p>
+      <p className="text-xs text-text-muted mb-4">Brandly&apos;s fit score for each post against what your audience did with it.</p>
       {ready ? (
         <>
           <div className="grid grid-cols-2 gap-3 mb-3">

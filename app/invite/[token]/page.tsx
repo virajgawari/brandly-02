@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useStore } from "@/lib/store";
 
@@ -33,7 +34,7 @@ export default function InvitePage() {
       <div className="max-w-sm text-center space-y-2">
         <h1 className="text-lg font-medium">{error ? "Invite problem" : "Joining workspace…"}</h1>
         {error ? <p role="alert" className="text-sm text-text-muted">{error}</p> : <p className="text-sm text-text-muted">One moment.</p>}
-        {error && <a href="/" className="text-sm underline">Go to Brandly</a>}
+        {error && <Link href="/" className="text-sm underline">Go to Brandly</Link>}
       </div>
     </main>
   );

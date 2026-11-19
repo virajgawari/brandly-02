@@ -21,6 +21,7 @@ import { LAYOUT_LABELS, layoutKitOf } from "@/lib/render/kit";
 import { CONTENT_TEMPLATES, PLATFORM_LABELS } from "@/lib/templates";
 import { format, addDays } from "date-fns";
 import { sendFeedback, track } from "@/lib/track";
+import { SCENES, SCENE_TEXT_MAX } from "@/lib/render/scenes";
 
 const BAD_REASONS = ["Off-brand", "Wrong tone", "Too long", "Too generic", "Wrong facts"];
 
@@ -61,6 +62,8 @@ export default function ComposerPage() {
   const [ideasLoading, setIdeasLoading] = useState(false);
   const [ideasError, setIdeasError] = useState<string | null>(null);
   const [fixNote, setFixNote] = useState("");
+  const [scene, setScene] = useState<string>("");
+  const [sceneText, setSceneText] = useState("");
   const [optionsOpen, setOptionsOpen] = useState(false);
   const renderSeq = useRef(0);
   const textTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -96,7 +99,7 @@ export default function ComposerPage() {
     const res = await fetch("/api/render-post", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ brandModel: brand?.model, post: p, layout: o.layout ?? p.layout, photo: o.photo, slidePhotos, size: o.size ?? size, store: o.store, key: o.key, show: o.show ?? show }),
+      body: JSON.stringify({ brandModel: brand?.model, post: p, layout: o.layout ?? p.layout, photo: o.photo, slidePhotos, size: o.size ?? size, store: o.store, key: o.key, show: o.show ?? show, ...(o.photo === "generate" ? { scene: scene || undefined, sceneText: sceneText.trim() || undefined } : {}) }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.rendered) throw new Error(data.error ?? `Couldn't make the image (HTTP ${res.status})`);
@@ -577,6 +580,19 @@ export default function ComposerPage() {
                               {LAYOUT_LABELS[l]}
                             </button>
                           ))}
+                      </div>
+                    )}
+                    {!isProductPost && (
+                      <div className="space-y-2">
+                        <SectionLabel>Scene for new AI photos</SectionLabel>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {SCENES.map((sc) => (
+                            <button key={sc.id} onClick={() => setScene(scene === sc.id ? "" : sc.id)} className={`px-2.5 py-1 rounded-lg border text-xs ${scene === sc.id ? "bg-accent/10 border-accent/40 text-text" : "border-border text-text-muted hover:text-text"}`}>
+                              {sc.label}
+                            </button>
+                          ))}
+                        </div>
+                        <Input value={sceneText} maxLength={SCENE_TEXT_MAX} onChange={(e) => setSceneText(e.target.value)} placeholder="Or describe what to show (optional)" />
                       </div>
                     )}
                     <div className="flex gap-2 flex-wrap items-center">

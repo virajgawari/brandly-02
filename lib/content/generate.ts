@@ -53,14 +53,16 @@ const textOf = (p: GeneratedPost) => [p.headline, p.caption].filter(Boolean).joi
 /** Rules (free) plus one judge call; one revise pass if either fails. Never throws, never fails generation. */
 async function checkAndRevise(
   post: GeneratedPost,
-  c: GenerateInput & { brief: PostBrief; prompt: { system: string; user: string }; started: number; opts?: Parameters<typeof generateStructured>[3] }
+  c: GenerateInput & { brief: PostBrief; prompt: { system: string; user: string; brandContext?: string }; started: number; opts?: Parameters<typeof generateStructured>[3] }
 ): Promise<GeneratedPost> {
   const { model, platforms } = c;
   const limits = Object.fromEntries(platforms.map((p) => [p, PLATFORM_LIMITS[p]]));
   const skipped: FitCheck = { status: "skipped", passed: true, facets: [], offFacets: [] };
   const left = () => HARD_DEADLINE_MS - (Date.now() - c.started);
+  // Everything the model was allowed to know. Specifics in the post that are not in here count as invented.
+  const facts = [c.prompt.brandContext ?? "", c.topic, c.additionalContext, c.triggerContext, ...(c.products ?? []).map((x) => `${x.name} ${x.note ?? ""}`)].filter(Boolean).join("\n");
   const check = async (p: GeneratedPost) => {
-    const rules = checkRules(p, { banned: bannedWords(model), platforms, limits });
+    const rules = checkRules(p, { banned: bannedWords(model), platforms, limits, facts });
     // The judge tries Gemini first, which can be slow or out of quota; never let it use up the route's 60 s.
     const fit: FitCheck =
       model && left() > MIN_JUDGE_MS
@@ -115,6 +117,7 @@ export async function generatePost(input: GenerateInput): Promise<GenerateResult
   const brief = pickBrief(model, history, input.template, {
     allowCarousel: platforms.some((p) => p === "instagram" || p === "linkedin"),
     products: input.products,
+    request: [input.topic, input.additionalContext, input.triggerContext].filter(Boolean).join(" "),
   });
   const prompt = buildPostPrompt({ ...input, brief, history });
   const llmOpts = { task: "fast" as const, maxTokens: 2200, cachedContext: prompt.brandContext, temperature: POST_TEMPERATURE };

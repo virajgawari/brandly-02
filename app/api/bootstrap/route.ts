@@ -10,7 +10,7 @@ export async function GET() {
   try {
     const s = await requireSession();
     const [ws, profile, brands, posts, rules, member] = await Promise.all([
-      s.db.from("workspaces").select("id, name, plan, data_training_opt_in").eq("id", s.workspaceId).single(),
+      s.db.from("workspaces").select("id, name, plan, data_training_opt_in, ai_watermark, email_prefs").eq("id", s.workspaceId).single(),
       s.db.from("profiles").select("full_name, email").eq("id", s.userId).maybeSingle(),
       s.db.from("brands").select(BRAND_SELECT).eq("workspace_id", s.workspaceId).is("archived_at", null).order("created_at"),
       s.db.from("posts").select(POST_SELECT).eq("workspace_id", s.workspaceId).neq("status", "discarded").order("scheduled_at"),

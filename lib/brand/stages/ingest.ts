@@ -57,6 +57,14 @@ export const ingestStage: StageDefinition<IngestInput> = {
           report({ id: "site", label: "Reading your website", status: "info" });
           try {
             const { home: site, pages } = await crawlSite(input.websiteUrl!, {
+              // Show what the home page already tells us while the rest of the site is still being read.
+              onHome: (h) => {
+                report({ id: "site", label: `Read ${new URL(h.url).hostname}`, detail: h.title || undefined, status: "done" });
+                if (h.logoUrl) report({ id: "logo", label: "Found your logo", status: "done", image: h.logoUrl });
+                if (h.colors.length) report({ id: "colors", label: `Found ${h.colors.length} brand colours`, status: "done", swatches: h.colors });
+                if (h.fonts.length) report({ id: "fonts", label: `Fonts: ${h.fonts.slice(0, 2).join(", ")}`, status: "done", fonts: h.fonts });
+                if (h.images.length) report({ id: "photos", label: `Found ${h.images.length} photos to use in posts`, status: "done", image: h.images[0], images: h.images.slice(0, 8) });
+              },
               onPage: (read, max) => report({ id: "pages", label: `Read ${read} of up to ${max} pages`, status: "info" }),
             });
             output.website = site;
@@ -67,7 +75,7 @@ export const ingestStage: StageDefinition<IngestInput> = {
             ];
             output.photoUrls = [...new Set([...site.images, ...pages.flatMap((p) => p.images)])].slice(0, 20);
             if (pages.length) report({ id: "pages", label: `Read ${pages.length + 1} pages of your website`, status: "done" });
-            if (site.images.length) report({ id: "photos", label: `Found ${site.images.length} photos to use in posts`, status: "done", image: site.images[0] });
+            if (site.images.length) report({ id: "photos", label: `Found ${site.images.length} photos to use in posts`, status: "done", image: site.images[0], images: output.photoUrls.slice(0, 8) });
             report({ id: "site", label: `Read ${new URL(site.url).hostname}`, detail: site.title || undefined, status: "done" });
             if (site.logoUrl) report({ id: "logo", label: "Found your logo", status: "done", image: site.logoUrl });
             else report({ id: "logo", label: "No logo found on the site", detail: "You can upload one later", status: "warn" });

@@ -27,6 +27,10 @@ describe("buildIdeasPrompt", () => {
   it("omits the recent block when there is no history", () => {
     expect(buildIdeasPrompt(model)).not.toContain("Recent posts");
   });
+  it("appends the learned block only when given", () => {
+    expect(buildIdeasPrompt(model, [], "")).not.toContain("Use carousels");
+    expect(buildIdeasPrompt(model, [], "What works:\n- Use carousels.")).toContain("- Use carousels.");
+  });
 });
 
 describe("cleanIdeas", () => {

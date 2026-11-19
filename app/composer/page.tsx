@@ -1,4 +1,7 @@
 "use client";
+import { pushVersion, restoreVersion } from "@/lib/content/versions";
+import { fixLayout } from "@/lib/render/fix-layout";
+import { downloadImage } from "@/lib/download";
 import { useEffect, useRef, useState } from "react";
 import { PlatformIcon, TemplateIcon } from "@/components/ui/icons";
 import AppShell from "@/components/layout/AppShell";
@@ -18,6 +21,7 @@ import { LAYOUT_LABELS, layoutKitOf } from "@/lib/render/kit";
 import { CONTENT_TEMPLATES, PLATFORM_LABELS } from "@/lib/templates";
 import { format, addDays } from "date-fns";
 import { sendFeedback, track } from "@/lib/track";
+import { SCENES, SCENE_TEXT_MAX } from "@/lib/render/scenes";
 
 const BAD_REASONS = ["Off-brand", "Wrong tone", "Too long", "Too generic", "Wrong facts"];
 
@@ -53,10 +57,13 @@ export default function ComposerPage() {
   const [picked, setPicked] = useState<string[]>([]);
   const [batch, setBatch] = useState(0);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
-  const [show, setShow] = useState<{ logo: boolean; cta: boolean; subline: boolean }>({ logo: true, cta: true, subline: true });
+  const [show, setShow] = useState<{ logo: boolean; cta: boolean; subline: boolean; image: boolean; headline: boolean }>({ logo: true, cta: true, subline: true, image: true, headline: true });
   const [ideas, setIdeas] = useState<PostIdea[]>([]);
   const [ideasLoading, setIdeasLoading] = useState(false);
   const [ideasError, setIdeasError] = useState<string | null>(null);
+  const [fixNote, setFixNote] = useState("");
+  const [scene, setScene] = useState<string>("");
+  const [sceneText, setSceneText] = useState("");
   const [optionsOpen, setOptionsOpen] = useState(false);
   const renderSeq = useRef(0);
   const textTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -92,7 +99,7 @@ export default function ComposerPage() {
     const res = await fetch("/api/render-post", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ brandModel: brand?.model, post: p, layout: o.layout ?? p.layout, photo: o.photo, slidePhotos, size: o.size ?? size, store: o.store, key: o.key, show: o.show ?? show }),
+      body: JSON.stringify({ brandModel: brand?.model, post: p, layout: o.layout ?? p.layout, photo: o.photo, slidePhotos, size: o.size ?? size, store: o.store, key: o.key, show: o.show ?? show, ...(o.photo === "generate" ? { scene: scene || undefined, sceneText: sceneText.trim() || undefined } : {}) }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.rendered) throw new Error(data.error ?? `Couldn't make the image (HTTP ${res.status})`);
@@ -139,6 +146,31 @@ export default function ComposerPage() {
     textTimer.current = setTimeout(() => renderPreview(next, { photo: currentPhoto() }), 600);
   };
 
+  const restore = (i: number) => {
+    if (!post) return;
+    const next = restoreVersion(post, i);
+    setPost(next);
+    renderPreview(next, { layout: next.layout, photo: currentPhoto() });
+  };
+
+  const fixLayoutNow = () => {
+    if (!post || !kit) return;
+    const r = fixLayout({
+      layout: rendered?.layout ?? post.layout ?? kit.layouts[0],
+      allowed: kit.layouts,
+      hasPhoto: !!rendered?.photo || (rendered?.slidePhotos?.length ?? 0) > 0 || show.image === false,
+      headline: post.headline ?? "",
+      subline: post.subline,
+      itemCount: post.items?.length,
+      hasStat: !!post.stat,
+    });
+    setFixNote(r.changes.length ? r.changes.join(" ") : "Layout already looks fine.");
+    if (!r.changes.length) return;
+    const next = { ...post, layout: r.layout, headline: r.headline, subline: r.subline };
+    setPost(next);
+    renderPreview(next, { layout: r.layout, photo: currentPhoto() });
+  };
+
   const toggleShow = (k: keyof typeof show, v: boolean) => {
     const next = { ...show, [k]: v };
     setShow(next);
@@ -159,6 +191,18 @@ export default function ComposerPage() {
     }
     setIdeasLoading(false);
   };
+
+  // Arriving from onboarding (?first=1): write the first post straight away.
+  const firstRun = useRef(false);
+  useEffect(() => {
+    if (firstRun.current || !brand?.model) return;
+    if (new URLSearchParams(window.location.search).get("first") !== "1") return;
+    firstRun.current = true;
+    window.history.replaceState(null, "", "/composer");
+    const product = brand.model.content.productsServices[0];
+    generate(0, { template: "product_launch", topic: product ? `Introduce ${product}` : "" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brand?.model]);
 
   const pickIdea = (i: PostIdea) => {
     setSelectedTemplate(i.template as TemplateCategory);
@@ -222,6 +266,7 @@ export default function ComposerPage() {
     }
     // Asking again for the same request means the last one wasn't good enough.
     if (post && generationId && !saved) track("regenerated", { generationId });
+    const previous = post;
     setGenerating(true);
     setGenError(null);
     setRating(null);
@@ -246,6 +291,7 @@ export default function ComposerPage() {
       }),
     });
     const data = await res.json().catch(() => ({}));
+    if (data.post && previous) data.post = { ...data.post, versions: pushVersion(previous) };
     setPost(data.post ?? null);
     setGenerationId(data.generationId ?? null);
     if (!data.post) setGenError(data.error ?? "Couldn't write a post. Please try again.");
@@ -412,7 +458,9 @@ export default function ComposerPage() {
       <div className="p-4 sm:p-8 max-w-6xl mx-auto">
         {!editing && (
           <div className="max-w-3xl mx-auto text-center space-y-6">
-            <PageHeader title="What do you want to post?" subtitle={`Creating content for ${brand.name}`} />
+            <div className="text-left">
+              <PageHeader title="What do you want to post?" subtitle={`Writing for ${brand.name}`} />
+            </div>
             <Textarea
               label="Describe the post you want"
               placeholder="e.g. Announce our new monsoon blend and why it's perfect for rainy mornings"
@@ -461,7 +509,7 @@ export default function ComposerPage() {
                 {post && !generating && (
                   <>
                     <PhoneFrame>
-                      <PlatformPreview post={post} platforms={selectedPlatforms} brandDNA={brand.dna} igHandle={brand.sources.instagram} images={rendered?.urls ?? []} imageLoading={rendering} />
+                      <PlatformPreview post={post} platforms={selectedPlatforms} brandDNA={brand.dna} igHandle={brand.sources.instagram || brand.name} images={rendered?.urls ?? []} imageLoading={rendering} />
                     </PhoneFrame>
                     {renderError && <p className="text-xs text-error text-center">{renderError}</p>}
                     <div className="flex gap-2 justify-center flex-wrap">
@@ -513,11 +561,11 @@ export default function ComposerPage() {
               {/* Right: edit panel */}
               {post && !generating && (
                 <div className="lg:col-span-2 space-y-3">
-                  <EditSection title="Image" defaultOpen>
+                  <EditSection title="Image" defaultOpen shown={show.image} onToggle={(v) => toggleShow("image", v)}>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-text-muted">Size</span>
                       <div className="flex gap-1" role="group" aria-label="Image size">
-                        {(["1080x1350", "1080x1080"] as const).map((sz) => (
+                        {(["1080x1350", "1080x1080", "1080x1920"] as const).map((sz) => (
                           <button
                             key={sz}
                             aria-pressed={size === sz}
@@ -527,7 +575,7 @@ export default function ComposerPage() {
                             }}
                             className={`text-xs px-3 py-1 rounded-full border ${size === sz ? "bg-accent/10 border-accent/40 text-accent-light" : "border-border text-text-muted hover:text-text"}`}
                           >
-                            {sz === "1080x1350" ? "4:5" : "1:1"}
+                            {sz === "1080x1350" ? "4:5" : sz === "1080x1080" ? "1:1" : "9:16"}
                           </button>
                         ))}
                       </div>
@@ -548,6 +596,19 @@ export default function ComposerPage() {
                           ))}
                       </div>
                     )}
+                    {!isProductPost && (
+                      <div className="space-y-2">
+                        <SectionLabel>Scene for new AI photos</SectionLabel>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {SCENES.map((sc) => (
+                            <button key={sc.id} onClick={() => setScene(scene === sc.id ? "" : sc.id)} className={`px-2.5 py-1 rounded-lg border text-xs ${scene === sc.id ? "bg-accent/10 border-accent/40 text-text" : "border-border text-text-muted hover:text-text"}`}>
+                              {sc.label}
+                            </button>
+                          ))}
+                        </div>
+                        <Input value={sceneText} maxLength={SCENE_TEXT_MAX} onChange={(e) => setSceneText(e.target.value)} placeholder="Or describe what to show (optional)" />
+                      </div>
+                    )}
                     <div className="flex gap-2 flex-wrap items-center">
                       {brandPhotos.length > 0 && !isProductPost && (
                         <Button size="sm" variant="secondary" disabled={rendering} onClick={nextBrandPhoto}>Use a brand photo</Button>
@@ -555,7 +616,11 @@ export default function ComposerPage() {
                       {!isProductPost && (
                         <Button size="sm" variant="secondary" disabled={rendering} onClick={() => renderPreview(post, { photo: "generate" })}>{(rendered?.slidePhotos?.length ?? 0) > 0 ? "New AI photos" : "New AI photo"}</Button>
                       )}
+                      {!isProductPost && (
+                        <Button size="sm" variant="secondary" disabled={rendering} onClick={fixLayoutNow}>Fix layout</Button>
+                      )}
                       {rendering && <span className="text-xs text-text-muted">Laying out your post…</span>}
+                      {fixNote && !rendering && <span className="text-xs text-text-muted">{fixNote}</span>}
                     </div>
                     {post.imagePrompt && (
                       <details className="text-xs text-text-muted">
@@ -565,7 +630,7 @@ export default function ComposerPage() {
                     )}
                   </EditSection>
 
-                  <EditSection title="Headline" defaultOpen>
+                  <EditSection title="Headline" defaultOpen shown={show.headline} onToggle={(v) => toggleShow("headline", v)}>
                     <Input label="Headline on the image" value={post.headline ?? ""} onChange={(e) => editVisualText("headline", e.target.value)} />
                   </EditSection>
 
@@ -596,6 +661,22 @@ export default function ComposerPage() {
                   <EditSection title="Call to action" shown={show.cta} onToggle={(v) => toggleShow("cta", v)} />
                   <EditSection title="Logo" shown={show.logo} onToggle={(v) => toggleShow("logo", v)} />
 
+                  {(post.versions?.length ?? 0) > 0 && (
+                    <EditSection title={`Earlier drafts (${post.versions!.length})`}>
+                      <ul className="space-y-2">
+                        {post.versions!.map((v, i) => (
+                          <li key={v.at} className="flex items-start gap-3 text-xs">
+                            <span className="flex-1 min-w-0">
+                              <span className="block font-medium truncate">{v.post.headline || v.post.caption.slice(0, 50)}</span>
+                              <span className="block text-text-muted">{new Date(v.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                            </span>
+                            <Button size="sm" variant="secondary" onClick={() => restore(i)}>Restore</Button>
+                          </li>
+                        ))}
+                      </ul>
+                    </EditSection>
+                  )}
+
                   {post.check && (
                     <EditSection title="Check">
                       <Scorecard check={post.check} text={[post.headline, post.caption].filter(Boolean).join("\n")} />
@@ -613,6 +694,7 @@ export default function ComposerPage() {
                       />
                     </div>
                     <div className="flex gap-2">
+                      {rendered?.urls?.[0] && <Button variant="ghost" onClick={() => downloadImage(rendered.urls[0], "brandly-post.png")}>Download</Button>}
                       <Button variant="ghost" onClick={() => schedulePost("draft")} disabled={saved || saving}>Save Draft</Button>
                       <Button onClick={() => schedulePost("scheduled")} disabled={saved || saving} loading={saving}>{saved ? "Scheduled" : "Schedule Post"}</Button>
                     </div>

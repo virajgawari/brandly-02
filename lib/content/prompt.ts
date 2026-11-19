@@ -9,13 +9,14 @@ import { AI_CLICHES, briefBlock, type PostBrief } from "./brief";
 import { historyBlock, type ContentHistory } from "./history";
 import { imagePromptFromBrief } from "./visual";
 
-export const POST_PROMPT_VERSION = "generate-post@3";
+export const POST_PROMPT_VERSION = "generate-post@5";
 /** Higher than the default 0.7: posts should vary, brand facts come from the context. */
 export const POST_TEMPERATURE = 0.9;
 
 export const POST_SYSTEM = `You are a senior social media copywriter for one brand.
 You write posts that sound like the brand's own people wrote them: specific, concrete, plain words.
-You follow the POST BRIEF exactly. You never sound like generic AI marketing copy.`;
+You follow the POST BRIEF exactly. You never sound like generic AI marketing copy.
+Use only facts that appear in the brand context or the request. Never invent people, customer quotes, numbers, brew or process times, quantities, limited runs, product names, prices, dates or awards. When a detail is missing, write around it instead of making one up.`;
 
 export function brandContextOf(model?: BrandModel, dna?: BrandDNA): string {
   return model ? toPromptContext(model) : `Brand DNA:\n${JSON.stringify(dna ?? {}, null, 2)}`;
@@ -24,6 +25,8 @@ export function brandContextOf(model?: BrandModel, dna?: BrandDNA): string {
 export function bannedWords(model?: BrandModel): string[] {
   return [...new Set([...AI_CLICHES, ...(model?.voice.vocabulary.avoid ?? [])].map((w) => w.trim()).filter(Boolean))];
 }
+
+import { businessLine } from "@/lib/brand/business";
 
 export interface PostRequest {
   model?: BrandModel;
@@ -60,7 +63,10 @@ export function buildPostPrompt(r: PostRequest): { system: string; user: string;
     `WRITING RULES:`,
     `- Never use these words or phrases: ${bannedWords(r.model).join(", ")}.`,
     `- No emoji as the first character. No "Did you know". No rhetorical triple lists ("X, Y and Z").`,
-    `- Short paragraphs, specific details (names of products, places, numbers, textures), one idea per post.`,
+    `- Short paragraphs, one idea per post. Use ONLY details that appear in the brand context, topic or extra context above.`,
+    `- Never invent facts: no made-up people, customers, places, estates, tasting notes, origins, ingredients, numbers, prices, discounts, promo codes, deadlines or shipping terms. If a detail is not given, write around it.`,
+    `- The brand's do/don't rules (such as naming an origin) apply only where the facts exist; when they do not, skip the rule.`,
+    businessLine(r.model) && `- ${businessLine(r.model)}`,
     samples.length && `- Match the rhythm of these brand lines: ${samples.slice(0, 3).map((s) => `"${s}"`).join(" ")}`,
     `- Write 2-3 sentences that could sit next to the brand's EXAMPLE LINES without standing out.`,
     `- Hashtags: 5-10, mostly from: ${tags.length ? tags.join(" ") : "niche tags for this category"}. Include the #.`,
@@ -153,6 +159,17 @@ export function cleanCaption(text: string, cta: string): string {
   return out;
 }
 
+/** Removes repeated hashtags, ignoring case. */
+export function dedupeTags(tags: string[]): string[] {
+  const seen = new Set<string>();
+  return tags.filter((t) => {
+    const k = t.trim().toLowerCase();
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 /** Normalises a model reply (validated or raw from n8n) into a GeneratedPost with brief metadata attached. */
 export function finalizePost(raw: unknown, r: Pick<PostRequest, "model" | "dna" | "brief" | "platforms">): GeneratedPost | null {
   const parsed = GeneratedPostSchema.safeParse(raw);
@@ -168,11 +185,11 @@ export function finalizePost(raw: unknown, r: Pick<PostRequest, "model" | "dna" 
   const written = p?.slides ?? loose.slides ?? [];
   return {
     caption: cleanCaption(p?.caption ?? loose.caption!, cta),
-    hashtags: p?.hashtags ?? (loose.hashtags ?? []).slice(0, 10),
+    hashtags: dedupeTags(p?.hashtags ?? (loose.hashtags ?? []).slice(0, 10)),
     cta,
     bestTimeToPost: p?.bestTimeToPost || loose.bestTimeToPost || "",
     postType: r.brief.carousel ? "Carousel" : cleanPostType(p?.postType || loose.postType),
-    platformVariants: Object.fromEntries(Object.entries(variants).filter(([k]) => (r.platforms as string[]).includes(k))),
+    platformVariants: Object.fromEntries(Object.entries(variants).filter(([k, v]) => (r.platforms as string[]).includes(k) && typeof v === "string" && v.trim() !== "" && !/^(same as|see|identical to|as above)\b/i.test(v.trim()))),
     imagePrompt: imagePromptFromBrief(vb, r.model, r.dna, loose.imagePrompt ?? headline),
     format: r.brief.format.id,
     hook: r.brief.hook.id,

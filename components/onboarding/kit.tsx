@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowLeft, Check, CircleDashed, Lock, LockOpen, X } from
 import { Button, Spinner } from "@/components/ui";
 import type { Finding } from "@/lib/brand/stages/types";
 import type { FieldSource } from "@/lib/brand/model";
+import { boardFromFindings } from "@/lib/brand/board";
 
 // ── Shell: one topic per screen, one primary action ───────────────────────
 export function OnboardingShell({
@@ -259,6 +260,92 @@ export function LiveFindings({ findings, running }: { findings: Finding[]; runni
         </li>
       )}
     </ul>
+  );
+}
+
+// ── Live brand board: the brand taking shape while the run is going ───────
+function Slot({ title, ready, children }: { title: string; ready: boolean; children?: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <p className="text-[11px] uppercase tracking-wide text-text-muted">{title}</p>
+      <div className="mt-2.5">{ready ? <div className="animate-fade-in">{children}</div> : <div className="h-10 rounded-lg bg-border/60 animate-pulse" />}</div>
+    </div>
+  );
+}
+
+export function LiveBrandBoard({ findings, running }: { findings: Finding[]; running: boolean }) {
+  const b = boardFromFindings(findings);
+  const settled = (id: string) => findings.some((f) => f.id === id && f.status !== "info") || !running;
+  return (
+    <div className="space-y-3" aria-live="polite">
+      <div className="rounded-2xl border border-border bg-card p-4 flex items-center gap-3 min-h-[72px]">
+        {b.logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={b.logo} alt="" className="h-11 w-11 object-contain rounded-lg bg-white border border-border p-1 animate-fade-in" />
+        ) : (
+          <div className={clsx("h-11 w-11 rounded-lg bg-border/60", running && !b.logoMissing && "animate-pulse")} />
+        )}
+        <div className="min-w-0 flex-1">
+          {b.name ? <p className="text-base font-medium truncate animate-fade-in">{b.name}</p> : <div className="h-4 w-40 rounded bg-border/60 animate-pulse" />}
+          <p className="text-xs text-text-muted mt-1 truncate">
+            {b.logoMissing ? "No logo on the site, you can add one later" : running ? b.status ?? "Working…" : "Done"}
+          </p>
+        </div>
+        {running && <Spinner size={16} />}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Slot title="Colours" ready={b.swatches.length > 0 || (settled("colors") && !running)}>
+          {b.swatches.length ? (
+            <div className="flex h-10 rounded-lg overflow-hidden border border-border">
+              {b.swatches.slice(0, 6).map((c) => (
+                <span key={c} title={c} className="flex-1" style={{ background: c }} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-text-muted">No clear colours found</p>
+          )}
+        </Slot>
+        <Slot title="Fonts" ready={b.fonts.length > 0 || (settled("fonts") && !running)}>
+          {b.fonts.length ? (
+            <div className="flex gap-4">
+              {b.fonts.slice(0, 2).map((f) => (
+                <div key={f} className="min-w-0">
+                  <p className="text-2xl leading-none" style={{ fontFamily: `"${f}", system-ui, sans-serif` }}>Aa</p>
+                  <p className="text-xs text-text-muted mt-1 truncate">{f}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-text-muted">No custom fonts found</p>
+          )}
+        </Slot>
+      </div>
+
+      <Slot title="Photos" ready={b.photos.length > 0 || (settled("photos") && !running)}>
+        {b.photos.length ? (
+          <div className="grid grid-cols-4 gap-2">
+            {b.photos.slice(0, 8).map((u) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={u} src={u} alt="" loading="lazy" className="aspect-square w-full object-cover rounded-lg border border-border bg-border/40 animate-fade-in" />
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-text-muted">No photos found, you can add your own</p>
+        )}
+      </Slot>
+
+      <Slot title="In a line" ready={!!b.oneLiner}>
+        <p className="text-sm">{b.oneLiner}</p>
+      </Slot>
+
+      <details className="rounded-2xl border border-border bg-card px-4 py-3 text-sm">
+        <summary className="cursor-pointer text-text-muted">Details</summary>
+        <div className="mt-3">
+          <LiveFindings findings={findings} running={running} />
+        </div>
+      </details>
+    </div>
   );
 }
 

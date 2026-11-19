@@ -138,13 +138,14 @@ const SKIP_IMG = /logo|icon|favicon|sprite|avatar|badge|payment|flag|emoji|spinn
 const GOOD_IMG = /product|hero|banner|feature|collection|shop|item|gallery|cover|main|slide|lifestyle|cdn\.shopify\.com\/s\/files/i;
 
 /** Picks <img> tags that look like real content photos (not icons or logos). */
-function contentImages(html: string, abs: (href?: string) => string | undefined, logoUrl?: string): string[] {
+export function contentImages(html: string, abs: (href?: string) => string | undefined, logoUrl?: string): string[] {
   const scored: { url: string; score: number }[] = [];
-  for (const tag of html.match(/<img[^>]*>/gi) ?? []) {
+  for (const tag of html.match(/<img\b[^>]*>/gi) ?? []) {
     // Lazy-loaded images keep the real URL in data-src / srcset.
     const srcset = attr(tag, "srcset") ?? attr(tag, "data-srcset");
+    // Candidates are separated by a comma + whitespace; commas inside a URL (cloudinary "f_auto,w_640") stay intact.
     const fromSet = srcset
-      ?.split(",")
+      ?.split(/,\s+/)
       .map((s) => s.trim().split(/\s+/))
       .sort((a, b) => parseInt(b[1] ?? "0") - parseInt(a[1] ?? "0"))[0]?.[0];
     const src = attr(tag, "data-src") ?? fromSet ?? attr(tag, "src");

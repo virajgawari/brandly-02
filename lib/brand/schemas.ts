@@ -75,6 +75,7 @@ export const ExtractSchema = z.object({
   problem: str,
   promise: str,
   differentiators: strArr,
+  proofPoints: strArr,
   prism: z
     .object({
       physique: str,

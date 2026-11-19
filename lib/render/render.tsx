@@ -8,7 +8,7 @@ import { layoutKitOf } from "./kit";
 import { LAYOUTS, type LayoutProps } from "./layouts";
 import { applyShow, type ShowFlags } from "./show";
 
-export type RenderSize = "1080x1350" | "1080x1080";
+export type RenderSize = "1080x1350" | "1080x1080" | "1080x1920";
 
 export interface RenderInput {
   model: BrandModel;
@@ -25,10 +25,13 @@ export interface RenderInput {
   slidePhotos?: (string | undefined)[];
   /** Hide the logo, call to action or supporting line. */
   show?: ShowFlags;
+  /** Stamp a small "Made with AI" label in the bottom-right corner. */
+  watermark?: boolean;
 }
 
 /** Renders one PNG per slide (one for a single-image post). */
-export async function renderPost(input: RenderInput): Promise<Buffer[]> {
+export async function renderPost(raw: RenderInput): Promise<Buffer[]> {
+  const input: RenderInput = raw.show?.image === false ? { ...raw, photo: undefined, photos: undefined, slidePhotos: undefined } : raw;
   const { model, size } = input;
   const { post, logo } = applyShow(input.post, input.logo, input.show);
   const [width, height] = size.split("x").map(Number);
@@ -45,7 +48,7 @@ export async function renderPost(input: RenderInput): Promise<Buffer[]> {
     width,
     height,
   };
-  const headline = (post.headline || post.caption?.split(/[.!?\n]/)[0] || model.name).slice(0, 140);
+  const headline = input.show?.headline === false ? "" : (post.headline || post.caption?.split(/[.!?\n]/)[0] || model.name).slice(0, 140);
 
   const frames: LayoutProps[] = [];
   const frameLayouts: LayoutId[] = [];
@@ -56,7 +59,7 @@ export async function renderPost(input: RenderInput): Promise<Buffer[]> {
       const slide = { index: i + 1, total };
       if (i === 0) {
         frameLayouts.push("product-cover");
-        frames.push({ ...base, headline: s.headline || headline, subline: post.subline, photos: input.photos, photo: input.photos?.[0] ?? input.photo, slide });
+        frames.push({ ...base, headline: input.show?.headline === false ? "" : s.headline || headline, subline: post.subline, photos: input.photos, photo: input.photos?.[0] ?? input.photo, slide });
       } else if (i === total - 1) {
         frameLayouts.push("carousel-slide");
         frames.push({ ...base, headline: s.headline, subline: s.body, cta: post.cta, slide, noNumber: true });
@@ -69,7 +72,7 @@ export async function renderPost(input: RenderInput): Promise<Buffer[]> {
     const slides = post.slides;
     const total = slides.length;
     const photoAt = (i: number) => input.slidePhotos?.[i] ?? (i === 0 ? input.photo : undefined);
-    frames.push({ ...base, headline: slides[0].headline || headline, subline: slides[0].body || post.subline, photo: photoAt(0), slide: { index: 1, total } });
+    frames.push({ ...base, headline: input.show?.headline === false ? "" : slides[0].headline || headline, subline: slides[0].body || post.subline, photo: photoAt(0), slide: { index: 1, total } });
     slides.slice(1).forEach((s, i) => frames.push({ ...base, headline: s.headline, subline: s.body, cta: post.cta, photo: photoAt(i + 1), slide: { index: i + 2, total } }));
   } else {
     frames.push({ ...base, headline, subline: post.subline, cta: post.cta, items: post.items, stat: post.stat, photo: layoutNeedsPhoto(input.layout) ? input.photo : undefined });
@@ -78,7 +81,15 @@ export async function renderPost(input: RenderInput): Promise<Buffer[]> {
   return Promise.all(
     frames.map(async (props, i) => {
       const Layout = LAYOUTS[frameLayouts[i] ?? (i === 0 ? input.layout : "carousel-slide")];
-      const res = new ImageResponse(<Layout {...props} />, {
+      const body = input.watermark ? (
+        <div style={{ display: "flex", position: "relative", width, height }}>
+          <Layout {...props} />
+          <div style={{ display: "flex", position: "absolute", right: 24, bottom: 20, padding: "6px 12px", borderRadius: 999, background: "rgba(0,0,0,0.55)", color: "#fff", fontSize: 20 }}>Made with AI</div>
+        </div>
+      ) : (
+        <Layout {...props} />
+      );
+      const res = new ImageResponse(body, {
         width,
         height,
         fonts: fonts.fonts.map((f) => ({ name: f.name, data: f.data, weight: f.weight, style: f.style })),

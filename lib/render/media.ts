@@ -7,20 +7,29 @@ import { n8nEnabled, n8nRequest } from "@/lib/n8n";
 import type { GeneratedPost, RenderedMedia } from "@/lib/types";
 import { imageFromStorage, imageFromUrl, imageTone } from "./assets";
 import { layoutKitOf } from "./kit";
-import { museEnabled, museImage } from "./muse";
+import { museEnabled, museImage, type MuseAspect } from "./muse";
 
 export type PhotoRef = NonNullable<RenderedMedia["photo"]>;
 
 /** Brand photo for this post: least recently used one first (Phase 3b). */
-export function pickBrandPhoto(model: BrandModel, history: ContentHistory): PhotoRef | undefined {
-  const photos = model.expression.photos ?? [];
-  if (!photos.length) return undefined;
+export function pickBrandPhoto(model: BrandModel, history: ContentHistory, preferProduct = false): PhotoRef | undefined {
+  return pickBrandPhotos(model, history, 1, preferProduct)[0];
+}
+
+/** Up to `n` different brand photos, least recently used first (a carousel gets a different photo per slide). */
+export function pickBrandPhotos(model: BrandModel, history: ContentHistory, n: number, preferProduct = false): PhotoRef[] {
+  const all = model.expression.photos ?? [];
+  // A product post uses product photos when there are any; otherwise any brand photo.
+  const products = preferProduct ? all.filter((p) => p.role === "product") : [];
+  const photos = products.length ? products : all;
   const lastUse = (path: string) => {
     const i = history.posts.findIndex((p) => p.photoPath === path);
     return i < 0 ? Infinity : i; // larger = longer ago
   };
-  const best = [...photos].sort((a, b) => lastUse(b.path) - lastUse(a.path))[0];
-  return { kind: "brand", ref: best.path };
+  return [...photos]
+    .sort((a, b) => lastUse(b.path) - lastUse(a.path))
+    .slice(0, Math.max(0, n))
+    .map((p) => ({ kind: "brand" as const, ref: p.path }));
 }
 
 /** Product photos the generated image should be based on: the post's first slide photo, else brand product photos. */
@@ -39,7 +48,7 @@ function referencePaths(model: BrandModel, post: GeneratedPost): { paths: string
 }
 
 /** Generated photo: Muse Image first (based on the brand's product photos when the post features one), then the n8n workflow. */
-export async function generatePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: "4:5" | "1:1", promptOverride?: string): Promise<PhotoRef | undefined> {
+export async function generatePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: MuseAspect, promptOverride?: string): Promise<PhotoRef | undefined> {
   const imagePrompt = promptOverride ?? post.imagePrompt;
   if (!imagePrompt) return undefined;
 
@@ -74,7 +83,7 @@ export function slidePrompt(post: GeneratedPost, index: number): string {
 }
 
 /** One generated photo per carousel slide, made in parallel to stay inside the route's time limit. */
-export async function generateSlidePhotos(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: "4:5" | "1:1"): Promise<(PhotoRef | undefined)[]> {
+export async function generateSlidePhotos(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: MuseAspect): Promise<(PhotoRef | undefined)[]> {
   const n = post.slides?.length ?? 0;
   return Promise.all(Array.from({ length: n }, (_, i) => generatePhoto(session, model, post, aspect, slidePrompt(post, i))));
 }
@@ -101,11 +110,11 @@ export async function loadPhotoRefs(session: Session | null, model: BrandModel, 
   );
 }
 
-/** Chooses where the photo comes from: a real brand photo when it fits, else a generated one. */
-export async function resolvePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, history: ContentHistory, aspect: "4:5" | "1:1"): Promise<PhotoRef | undefined> {
-  const brand = pickBrandPhoto(model, history);
-  if (brand && post.visualBrief?.usesProductPhoto) return brand;
-  return (await generatePhoto(session, model, post, aspect)) ?? brand;
+/** Chooses where the photo comes from: the brand's own photo whenever it has one, else a generated one. */
+export async function resolvePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, history: ContentHistory, aspect: MuseAspect): Promise<PhotoRef | undefined> {
+  const brand = pickBrandPhoto(model, history, !!post.visualBrief?.usesProductPhoto);
+  if (brand) return brand;
+  return generatePhoto(session, model, post, aspect);
 }
 
 /** Loads the photo and logo as data URIs for Satori. */

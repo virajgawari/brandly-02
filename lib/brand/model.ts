@@ -69,6 +69,16 @@ export interface Audience {
   notes?: string;
 }
 
+/** Real-world contact details. Optional; fed into post calls to action. */
+export interface BusinessDetails {
+  address?: string;
+  phone?: string;
+  hours?: string;
+  /** Where a call to action should send people (booking page, shop, WhatsApp link). */
+  ctaLink?: string;
+  ctaLabel?: string;
+}
+
 export interface Strategy {
   category: string;
   /** Controlled lists (lib/brand/taxonomy.ts); unset on brands made before classification existed. */
@@ -82,6 +92,7 @@ export interface Strategy {
   differentiators: string[];
   proofPoints: string[];
   competitors: string[];
+  business?: BusinessDetails;
 }
 
 export interface Prism {

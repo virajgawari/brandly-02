@@ -9,9 +9,9 @@ const DEFAULT_MODEL = "muse-image-1.0";
 const TIMEOUT_MS = 45_000;
 const COST_USD = 0.01;
 
-export type MuseAspect = "4:5" | "1:1";
+export type MuseAspect = "4:5" | "1:1" | "9:16";
 
-const SIZES: Record<MuseAspect, string> = { "4:5": "1024x1280", "1:1": "1024x1024" };
+const SIZES: Record<MuseAspect, string> = { "4:5": "1024x1280", "1:1": "1024x1024", "9:16": "1024x1792" };
 
 export function museEnabled(): boolean {
   return !!process.env.MUSE_API_KEY?.trim();

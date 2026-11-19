@@ -13,7 +13,7 @@ export type VersionSource = "user" | "stage" | "build";
 
 export interface Account {
   user: { id: string; email?: string; name: string | null };
-  workspace: { id: string; name: string; plan: string; data_training_opt_in: boolean };
+  workspace: { id: string; name: string; plan: string; data_training_opt_in: boolean; ai_watermark?: boolean; email_prefs?: { weekly?: boolean; product?: boolean } };
   /** The user's role in this workspace (owner, admin, editor, viewer). */
   role?: string | null;
 }

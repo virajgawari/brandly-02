@@ -115,13 +115,20 @@ export interface CrawlOptions {
   budgetMs?: number;
   perPageTimeoutMs?: number;
   onPage?: (read: number, max: number, page: PageEvidence) => void;
+  /** Fires as soon as the home page is read, before the rest of the crawl. */
+  onHome?: (home: WebsiteEvidence) => void;
 }
 
 /** Reads the home page, then up to `maxPages - 1` more same-site pages, politely and within a time budget. */
 export async function crawlSite(rawUrl: string, opts: CrawlOptions = {}): Promise<CrawlResult> {
-  const { maxPages = 25, concurrency = 4, budgetMs = 45_000, perPageTimeoutMs = 8_000, onPage } = opts;
+  const { maxPages = 25, concurrency = 4, budgetMs = 45_000, perPageTimeoutMs = 8_000, onPage, onHome } = opts;
   const started = Date.now();
   const home = await fetchWebsiteEvidence(rawUrl);
+  try {
+    onHome?.(home);
+  } catch {
+    /* progress display must never break the crawl */
+  }
   const origin = new URL(home.url).origin;
 
   let allowed = (_: string) => true;

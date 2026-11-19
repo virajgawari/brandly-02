@@ -28,7 +28,7 @@ function audienceLine(model: BrandModel): string {
 }
 
 /** The user message: what the brand sells, who for, its pillars, and recent posts to avoid repeating. */
-export function buildIdeasPrompt(model: BrandModel, recentOpenings: string[] = []): string {
+export function buildIdeasPrompt(model: BrandModel, recentOpenings: string[] = [], learned = ""): string {
   const s = model.strategy;
   const lines = [
     `Brand: ${model.name}`,
@@ -41,6 +41,7 @@ export function buildIdeasPrompt(model: BrandModel, recentOpenings: string[] = [
   if (recentOpenings.length) {
     lines.push(`Recent posts (do not repeat these angles):\n${recentOpenings.slice(0, 10).map((o, i) => `${i + 1}. ${o}`).join("\n")}`);
   }
+  if (learned.trim()) lines.push(learned.trim());
   return lines.join("\n");
 }
 

@@ -22,6 +22,50 @@ export interface LearnPost {
   ratings?: number[];
   /** Engagements per reach (or impressions), from post_metrics. */
   engagement?: number;
+  /** Judge brand-fit score (0..100) from the post's check, when it ran. */
+  fit?: number;
+}
+
+export interface Scoreboard {
+  /** Posts that have both a judge fit score and real engagement. */
+  scored: number;
+  /** Posts the judge scored but that have no metrics yet. */
+  awaitingMetrics: number;
+  /** Mean engagement rate of the higher-fit half and the lower-fit half. */
+  highFit?: number;
+  lowFit?: number;
+  /** Pearson r between fit and engagement, -1..1. */
+  correlation?: number;
+  /** "up" when higher fit really did get more engagement. */
+  verdict: "not-enough" | "up" | "flat" | "down";
+  points: { id: string; fit: number; engagement: number }[];
+}
+
+export const SCOREBOARD_MIN = 6;
+
+/** Does the judge's brand-fit score predict real engagement? Pure; needs SCOREBOARD_MIN scored posts. */
+export function scoreboard(posts: LearnPost[]): Scoreboard {
+  const withFit = posts.filter((p) => typeof p.fit === "number");
+  const points = withFit.filter((p) => typeof p.engagement === "number").map((p) => ({ id: p.id, fit: p.fit!, engagement: p.engagement! }));
+  const base: Scoreboard = { scored: points.length, awaitingMetrics: withFit.length - points.length, verdict: "not-enough", points };
+  if (points.length < SCOREBOARD_MIN) return base;
+
+  const sorted = [...points].sort((a, b) => a.fit - b.fit);
+  const half = Math.floor(sorted.length / 2);
+  const lowFit = mean(sorted.slice(0, half).map((p) => p.engagement));
+  const highFit = mean(sorted.slice(sorted.length - half).map((p) => p.engagement));
+
+  const mx = mean(points.map((p) => p.fit));
+  const my = mean(points.map((p) => p.engagement));
+  let sxy = 0, sxx = 0, syy = 0;
+  for (const p of points) {
+    sxy += (p.fit - mx) * (p.engagement - my);
+    sxx += (p.fit - mx) ** 2;
+    syy += (p.engagement - my) ** 2;
+  }
+  const correlation = sxx && syy ? sxy / Math.sqrt(sxx * syy) : 0;
+  const verdict = correlation >= 0.2 && highFit > lowFit ? "up" : correlation <= -0.2 && highFit < lowFit ? "down" : "flat";
+  return { ...base, highFit, lowFit, correlation, verdict };
 }
 
 export interface AgentSettings {

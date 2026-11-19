@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateStructured } from "@/lib/llm";
 import { cleanIdeas, buildIdeasPrompt, IDEAS_PROMPT_VERSION, IDEAS_SYSTEM, IdeasSchema } from "@/lib/content/ideas";
 import { recentPosts } from "@/lib/content/history";
+import { learnedBlock } from "@/lib/agent/stats";
 import { llmScope } from "@/lib/db/llm-scope";
 import { errorResponse, requireSession } from "@/lib/db/session";
 import { adminClient } from "@/lib/supabase/admin";
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
 
     const history = await recentPosts(model.id, 10, s);
     const out = await llmScope("suggest-ideas", { brandId: model.id, promptVersion: IDEAS_PROMPT_VERSION }, () =>
-      generateStructured(IdeasSchema, IDEAS_SYSTEM, buildIdeasPrompt(model, history.posts.map((p) => p.opening).filter(Boolean)), {
+      generateStructured(IdeasSchema, IDEAS_SYSTEM, buildIdeasPrompt(model, history.posts.map((p) => p.opening).filter(Boolean), learnedBlock(history.learned ?? [])), {
         task: "fast",
         maxTokens: 700,
         temperature: 0.9,

@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Input } from "@/components/ui";
-import AuthCard, { authMessage } from "@/components/auth/AuthCard";
+import AuthCard, { authMessage, nextPath } from "@/components/auth/AuthCard";
 import { createClient } from "@/lib/supabase/client";
 
 export default function SignupPage() {
@@ -11,11 +11,15 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [terms, setTerms] = useState(false);
   const [trainingOptIn, setTrainingOptIn] = useState(false);
+  const [qs, setQs] = useState(""); // keeps ?next= when switching between sign in and sign up
+  useEffect(() => setQs(window.location.search), []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkEmail, setCheckEmail] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
+    // An invite link sends people here with ?next=/invite/<token>; go back to it instead of onboarding.
+    const after = nextPath() === "/" ? "/onboarding" : nextPath();
     e.preventDefault();
     if (password.length < 8) return setError("Choose a password with at least 8 characters.");
     setBusy(true);
@@ -24,7 +28,7 @@ export default function SignupPage() {
       email: email.trim(),
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(after)}`,
         // Read by the on_auth_user_created trigger (profile + workspace + consent).
         data: { full_name: name.trim(), terms_accepted: terms, training_opt_in: trainingOptIn, signup_source: "web" },
       },
@@ -34,7 +38,7 @@ export default function SignupPage() {
     // Supabase returns a user with no identities when the email is already registered.
     if (data.user && !data.user.identities?.length) return setError("There's already an account with this email. Sign in instead.");
     if (data.session) {
-      window.location.href = "/onboarding";
+      window.location.href = after;
       return;
     }
     setCheckEmail(true);
@@ -55,7 +59,7 @@ export default function SignupPage() {
       footer={
         <>
           Already have an account?{" "}
-          <Link href="/login" className="text-text underline underline-offset-2">
+          <Link href={`/login${qs}`} className="text-text underline underline-offset-2">
             Sign in
           </Link>
         </>

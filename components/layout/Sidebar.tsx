@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import clsx from "clsx";
-import { CalendarDays, Check, ChevronsUpDown, Home, Images, LogOut, Package, Palette, PenLine, Plus, Settings, SlidersHorizontal, Workflow } from "lucide-react";
+import { CalendarDays, Check, ChevronsUpDown, Home, Images, LogOut, Package, Palette, PenLine, Plus, Settings, SlidersHorizontal, Workflow, Zap } from "lucide-react";
 import { useStore } from "@/lib/store";
 
 export const NAV = [
@@ -12,6 +12,7 @@ export const NAV = [
   { href: "/catalog", icon: Package, label: "Catalogue" },
   { href: "/assets", icon: Images, label: "Assets" },
   { href: "/composer", icon: PenLine, label: "Create" },
+  { href: "/sprint", icon: Zap, label: "Sprint" },
   { href: "/calendar", icon: CalendarDays, label: "Calendar" },
   { href: "/automation", icon: Workflow, label: "Automations" },
 ];

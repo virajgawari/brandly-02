@@ -77,7 +77,7 @@ export interface RenderedMedia {
   /** The photo used inside the layout (brand photo path or generated image URL). */
   photo?: { kind: "brand" | "generated"; ref: string };
   /** Elements hidden on the image (all shown when absent). */
-  show?: { logo?: boolean; cta?: boolean; subline?: boolean };
+  show?: { logo?: boolean; cta?: boolean; subline?: boolean; image?: boolean; headline?: boolean };
   /** Carousel: one photo per slide, same order as post.slides. `photo` is the first. */
   slidePhotos?: { kind: "brand" | "generated"; ref: string }[];
 }
@@ -109,8 +109,15 @@ export interface GeneratedPost {
   /** Layout chosen for the visual. */
   layout?: import("./brand/model").LayoutId;
   rendered?: RenderedMedia;
+  /** Earlier drafts of this post, newest first (see lib/content/versions.ts). */
+  versions?: PostVersion[];
   /** Result of the rule and brand-fit checks run after generation. */
   check?: PostCheck;
+}
+
+export interface PostVersion {
+  at: string;
+  post: Omit<GeneratedPost, "versions" | "rendered">;
 }
 
 export interface PostCheck {

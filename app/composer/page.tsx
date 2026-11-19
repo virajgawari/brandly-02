@@ -1,4 +1,6 @@
 "use client";
+import { pushVersion, restoreVersion } from "@/lib/content/versions";
+import { fixLayout } from "@/lib/render/fix-layout";
 import { downloadImage } from "@/lib/download";
 import { useEffect, useRef, useState } from "react";
 import { PlatformIcon, TemplateIcon } from "@/components/ui/icons";
@@ -54,10 +56,11 @@ export default function ComposerPage() {
   const [picked, setPicked] = useState<string[]>([]);
   const [batch, setBatch] = useState(0);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
-  const [show, setShow] = useState<{ logo: boolean; cta: boolean; subline: boolean }>({ logo: true, cta: true, subline: true });
+  const [show, setShow] = useState<{ logo: boolean; cta: boolean; subline: boolean; image: boolean; headline: boolean }>({ logo: true, cta: true, subline: true, image: true, headline: true });
   const [ideas, setIdeas] = useState<PostIdea[]>([]);
   const [ideasLoading, setIdeasLoading] = useState(false);
   const [ideasError, setIdeasError] = useState<string | null>(null);
+  const [fixNote, setFixNote] = useState("");
   const [optionsOpen, setOptionsOpen] = useState(false);
   const renderSeq = useRef(0);
   const textTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -138,6 +141,31 @@ export default function ComposerPage() {
     setPost(next);
     clearTimeout(textTimer.current);
     textTimer.current = setTimeout(() => renderPreview(next, { photo: currentPhoto() }), 600);
+  };
+
+  const restore = (i: number) => {
+    if (!post) return;
+    const next = restoreVersion(post, i);
+    setPost(next);
+    renderPreview(next, { layout: next.layout, photo: currentPhoto() });
+  };
+
+  const fixLayoutNow = () => {
+    if (!post || !kit) return;
+    const r = fixLayout({
+      layout: rendered?.layout ?? post.layout ?? kit.layouts[0],
+      allowed: kit.layouts,
+      hasPhoto: !!rendered?.photo || (rendered?.slidePhotos?.length ?? 0) > 0 || show.image === false,
+      headline: post.headline ?? "",
+      subline: post.subline,
+      itemCount: post.items?.length,
+      hasStat: !!post.stat,
+    });
+    setFixNote(r.changes.length ? r.changes.join(" ") : "Layout already looks fine.");
+    if (!r.changes.length) return;
+    const next = { ...post, layout: r.layout, headline: r.headline, subline: r.subline };
+    setPost(next);
+    renderPreview(next, { layout: r.layout, photo: currentPhoto() });
   };
 
   const toggleShow = (k: keyof typeof show, v: boolean) => {
@@ -223,6 +251,7 @@ export default function ComposerPage() {
     }
     // Asking again for the same request means the last one wasn't good enough.
     if (post && generationId && !saved) track("regenerated", { generationId });
+    const previous = post;
     setGenerating(true);
     setGenError(null);
     setRating(null);
@@ -247,6 +276,7 @@ export default function ComposerPage() {
       }),
     });
     const data = await res.json().catch(() => ({}));
+    if (data.post && previous) data.post = { ...data.post, versions: pushVersion(previous) };
     setPost(data.post ?? null);
     setGenerationId(data.generationId ?? null);
     if (!data.post) setGenError(data.error ?? "Couldn't write a post. Please try again.");
@@ -514,7 +544,7 @@ export default function ComposerPage() {
               {/* Right: edit panel */}
               {post && !generating && (
                 <div className="lg:col-span-2 space-y-3">
-                  <EditSection title="Image" defaultOpen>
+                  <EditSection title="Image" defaultOpen shown={show.image} onToggle={(v) => toggleShow("image", v)}>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-text-muted">Size</span>
                       <div className="flex gap-1" role="group" aria-label="Image size">
@@ -556,7 +586,11 @@ export default function ComposerPage() {
                       {!isProductPost && (
                         <Button size="sm" variant="secondary" disabled={rendering} onClick={() => renderPreview(post, { photo: "generate" })}>{(rendered?.slidePhotos?.length ?? 0) > 0 ? "New AI photos" : "New AI photo"}</Button>
                       )}
+                      {!isProductPost && (
+                        <Button size="sm" variant="secondary" disabled={rendering} onClick={fixLayoutNow}>Fix layout</Button>
+                      )}
                       {rendering && <span className="text-xs text-text-muted">Laying out your post…</span>}
+                      {fixNote && !rendering && <span className="text-xs text-text-muted">{fixNote}</span>}
                     </div>
                     {post.imagePrompt && (
                       <details className="text-xs text-text-muted">
@@ -566,7 +600,7 @@ export default function ComposerPage() {
                     )}
                   </EditSection>
 
-                  <EditSection title="Headline" defaultOpen>
+                  <EditSection title="Headline" defaultOpen shown={show.headline} onToggle={(v) => toggleShow("headline", v)}>
                     <Input label="Headline on the image" value={post.headline ?? ""} onChange={(e) => editVisualText("headline", e.target.value)} />
                   </EditSection>
 
@@ -596,6 +630,22 @@ export default function ComposerPage() {
 
                   <EditSection title="Call to action" shown={show.cta} onToggle={(v) => toggleShow("cta", v)} />
                   <EditSection title="Logo" shown={show.logo} onToggle={(v) => toggleShow("logo", v)} />
+
+                  {(post.versions?.length ?? 0) > 0 && (
+                    <EditSection title={`Earlier drafts (${post.versions!.length})`}>
+                      <ul className="space-y-2">
+                        {post.versions!.map((v, i) => (
+                          <li key={v.at} className="flex items-start gap-3 text-xs">
+                            <span className="flex-1 min-w-0">
+                              <span className="block font-medium truncate">{v.post.headline || v.post.caption.slice(0, 50)}</span>
+                              <span className="block text-text-muted">{new Date(v.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                            </span>
+                            <Button size="sm" variant="secondary" onClick={() => restore(i)}>Restore</Button>
+                          </li>
+                        ))}
+                      </ul>
+                    </EditSection>
+                  )}
 
                   {post.check && (
                     <EditSection title="Check">

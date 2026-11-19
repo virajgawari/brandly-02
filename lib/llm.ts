@@ -4,11 +4,13 @@ import type { z, ZodTypeAny } from "zod";
 import { currentLlmContext, persistRecord, startRecord, hashText, type LlmCallRecord } from "./llm-log";
 
 // Singleton clients, instantiated once per server process
-const anthropicClient = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null;
-const geminiClient = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
-const groqKey = process.env.GROQ_API_KEY || null;
+/** Ignores unset values and copied placeholders like "your_anthropic_api_key_here". */
+const realKey = (v?: string) => (v && !/^your_|_here$|^changeme$|^xxx/i.test(v.trim()) ? v.trim() : null);
+const anthropicKey = realKey(process.env.ANTHROPIC_API_KEY);
+const geminiKey = realKey(process.env.GEMINI_API_KEY);
+const anthropicClient = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
+const geminiClient = geminiKey ? new GoogleGenerativeAI(geminiKey) : null;
+const groqKey = realKey(process.env.GROQ_API_KEY);
 
 type Provider = "claude" | "groq" | "gemini";
 

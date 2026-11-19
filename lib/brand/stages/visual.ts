@@ -1,3 +1,4 @@
+import { friendlyError } from "@/lib/errors";
 import { analyseImages, parseJSON } from "../../llm";
 import { imagePixels } from "../../render/assets";
 import { brandColours, kmeans, poolPalettes, PIXELS_VERSION, type Cluster } from "../../measure/pixels";
@@ -71,7 +72,7 @@ export const visualStage: StageDefinition<VisualInput> = {
         }
         if (tagged) report({ id: "photo-tags", label: `Tagged ${tagged} ${tagged === 1 ? "photo" : "photos"}`, status: "done" });
       } catch (err) {
-        report({ id: "photo-tags", label: "Couldn't tag your photos", detail: err instanceof Error ? err.message : String(err), status: "warn" });
+        report({ id: "photo-tags", label: "Couldn't tag your photos", detail: friendlyError(err), status: "warn" });
       }
     }
 

@@ -1,12 +1,16 @@
+import { groundingFailure, groundingIssues } from "./grounding";
+
 // Deterministic checks on one generated post. No LLM calls, no server imports, so it is unit-testable.
 // Used at runtime by generatePost and offline by scripts/eval.ts (via evals/score.ts).
 export interface ScoreInput {
-  post: { caption: string; hashtags: string[]; cta?: string; headline?: string; platformVariants?: Record<string, string> } | null;
+  post: { caption: string; hashtags: string[]; cta?: string; headline?: string; subline?: string; stat?: string; items?: string[]; platformVariants?: Record<string, string> } | null;
   banned: string[];
   platforms: string[];
   limits: Record<string, { caption: number }>;
   /** Generation or schema error, if the model never produced a valid post. */
   error?: string;
+  /** Text the model was given. When set, specifics not found in it count as invented. */
+  facts?: string;
 }
 
 export interface Scores {
@@ -16,6 +20,8 @@ export interface Scores {
   hashtagCount: boolean;
   noEmojiFirst: boolean;
   noDidYouKnow: boolean;
+  /** Present only when facts were supplied. */
+  grounded?: boolean;
 }
 
 const EMOJI = /^\s*(\p{Extended_Pictographic}|\p{Regional_Indicator})/u;
@@ -44,7 +50,10 @@ export function scorePost(i: ScoreInput): { scores: Scores; passed: boolean; fai
     noEmojiFirst: !firsts.some((t) => EMOJI.test(t)),
     noDidYouKnow: !/did you know/i.test(all),
   };
+  const invented = i.facts === undefined ? [] : groundingIssues({ ...p, caption: p.caption }, i.facts);
+  if (i.facts !== undefined) scores.grounded = invented.length === 0;
   const failures = [
+    invented.length > 0 && groundingFailure(invented),
     !scores.noBanned && `banned: ${hits.join(", ")}`,
     !scores.captionWithinLimit && `caption over limit (${p.caption.length}/${limit})`,
     !scores.hashtagCount && `hashtags: ${p.hashtags.length}`,
@@ -62,7 +71,7 @@ export interface RuleCheck {
 
 export function checkRules(
   post: NonNullable<ScoreInput["post"]>,
-  opts: { banned: string[]; platforms: string[]; limits: ScoreInput["limits"] }
+  opts: { banned: string[]; platforms: string[]; limits: ScoreInput["limits"]; facts?: string }
 ): RuleCheck {
   const { passed, failures } = scorePost({ post, ...opts });
   return { passed, failures };

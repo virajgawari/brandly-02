@@ -3,13 +3,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import clsx from "clsx";
-import { CalendarDays, Check, ChevronsUpDown, Home, LogOut, Package, Palette, PenLine, Plus, SlidersHorizontal, Workflow } from "lucide-react";
+import { CalendarDays, Check, ChevronsUpDown, Home, Images, LogOut, Package, Palette, PenLine, Plus, SlidersHorizontal, Workflow } from "lucide-react";
 import { useStore } from "@/lib/store";
 
 export const NAV = [
   { href: "/", icon: Home, label: "Home" },
   { href: "/brand", icon: Palette, label: "Brand" },
   { href: "/catalog", icon: Package, label: "Catalogue" },
+  { href: "/assets", icon: Images, label: "Assets" },
   { href: "/composer", icon: PenLine, label: "Create" },
   { href: "/calendar", icon: CalendarDays, label: "Calendar" },
   { href: "/automation", icon: Workflow, label: "Automations" },

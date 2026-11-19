@@ -21,8 +21,16 @@ function Toggle({ label, hint, checked, onChange }: { label: string; hint: strin
   );
 }
 
+type Account = NonNullable<ReturnType<typeof useStore.getState>["account"]>;
+
+/** Wrapper so the form mounts only once the account has loaded and its state starts from real values. */
 export default function SettingsPage() {
   const account = useStore((s) => s.account);
+  if (!account) return <AppShell><div className="p-8 text-sm text-text-muted">Sign in to see your settings.</div></AppShell>;
+  return <SettingsForm account={account} />;
+}
+
+function SettingsForm({ account }: { account: Account }) {
   const hydrate = useStore((s) => s.hydrate);
   const [name, setName] = useState(account?.user.name ?? "");
   const [wsName, setWsName] = useState(account?.workspace.name ?? "");
@@ -31,7 +39,6 @@ export default function SettingsPage() {
   const [watermark, setWatermark] = useState(account?.workspace.ai_watermark ?? false);
   const [prefs, setPrefs] = useState({ weekly: account?.workspace.email_prefs?.weekly ?? true, product: account?.workspace.email_prefs?.product ?? false });
 
-  if (!account) return <AppShell><div className="p-8 text-sm text-text-muted">Sign in to see your settings.</div></AppShell>;
   const canEdit = account.role === "owner" || account.role === "admin";
 
   const flash = (ok: boolean) => setMsg(ok ? "Saved." : "Couldn't save, try again.");

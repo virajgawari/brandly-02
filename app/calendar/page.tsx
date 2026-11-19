@@ -204,10 +204,10 @@ export default function CalendarPage() {
   return (
     <AppShell>
       <DndProvider backend={HTML5Backend}>
-        <div className="p-8 max-w-7xl mx-auto">
+        <div className="p-4 sm:p-8 max-w-7xl mx-auto">
           <PageHeader
-            title="Content Calendar"
-            subtitle={brand ? `Scheduling for ${brand.name}` : "Select a brand to see posts"}
+            title="Calendar"
+            subtitle={brand ? `Everything planned for ${brand.name}` : "Select a brand to see posts"}
             action={
               <div className="flex gap-2 items-center">
                 <div className="flex bg-surface border border-border rounded-xl overflow-hidden">
@@ -225,15 +225,15 @@ export default function CalendarPage() {
                   ))}
                 </div>
                 <Link href="/composer">
-                  <Button size="sm">+ New Post</Button>
+                  <Button size="sm">New post</Button>
                 </Link>
               </div>
             }
           />
 
-          <div className="grid grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Calendar */}
-            <div className="col-span-3">
+            <div className="lg:col-span-3">
               {/* Nav */}
               <div className="flex items-center justify-between mb-4">
                 <button onClick={() => nav("prev")} className="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center text-text-muted hover:text-text transition-colors">
@@ -349,11 +349,11 @@ export default function CalendarPage() {
             </div>
 
             {/* ── Right: Post detail / Stats ── */}
-            <div className="col-span-1 space-y-5">
+            <div className="lg:col-span-1 space-y-5">
               {/* Legend */}
               <Card className="p-4">
                 <SectionLabel>Status</SectionLabel>
-                <div className="space-y-2">
+                <div className="flex flex-wrap gap-2 lg:flex-col lg:items-start">
                   {Object.entries(STATUS_COLORS).map(([status, cls]) => (
                     <div key={status} className="flex items-center gap-2">
                       <span className={clsx("text-[10px] px-2 py-0.5 rounded-full font-medium capitalize", cls)}>
@@ -366,7 +366,7 @@ export default function CalendarPage() {
 
               {/* Stats */}
               <Card className="p-4">
-                <SectionLabel>This Month</SectionLabel>
+                <SectionLabel>Your posts</SectionLabel>
                 <div className="space-y-3">
                   {[
                     ["Scheduled", brandPosts.filter((p) => p.status === "scheduled").length],
@@ -486,13 +486,10 @@ export default function CalendarPage() {
                 </Card>
               ) : (
                 <Card className="p-4 text-center">
-                  <p className="text-xs text-text-muted">Click any post to view details</p>
+                  <p className="text-xs text-text-muted">Tap a post to see its details</p>
                 </Card>
               )}
 
-              <Link href="/composer">
-                <Button className="w-full" variant="ghost">+ Create New Post</Button>
-              </Link>
             </div>
           </div>
         </div>

@@ -125,7 +125,7 @@ function BrandProfile() {
             className="block w-full text-2xl font-semibold tracking-tight mt-0.5 bg-transparent rounded-lg -mx-2 px-2 border border-transparent hover:border-border focus:border-text/40 focus:outline-none"
           />
           {model.identity.oneLiner && <p className="text-text-muted mt-1 text-sm max-w-xl">{model.identity.oneLiner}</p>}
-          <p className="text-xs text-text-muted mt-2">Everything on this page is editable. Changes save as you go, and edited fields stay locked so Brandly won&apos;t overwrite them.</p>
+          <p className="text-xs text-text-muted mt-2">Change anything here. It saves as you go.</p>
         </div>
         <Link href="/composer">
           <Button size="lg">
@@ -161,7 +161,7 @@ function BrandProfile() {
                   {toCheck.length} {toCheck.length === 1 ? "thing" : "things"} to check
                 </p>
                 <p className="text-text-muted mt-0.5">
-                  Brandly wasn&apos;t sure about these. Fix anything that&apos;s off, or lock what&apos;s right.{" "}
+                  Brandly wasn&apos;t sure about these. Have a quick look.{" "}
                   {toCheck.map((s, i) => (
                     <span key={s}>
                       <button type="button" onClick={() => goToSection(s)} className="underline underline-offset-2 hover:text-text">
@@ -173,7 +173,7 @@ function BrandProfile() {
                 </p>
               </>
             ) : (
-              <p>Here&apos;s your brand. Everything is editable, and anything you change is locked so Brandly won&apos;t overwrite it.</p>
+              <p>Here&apos;s your brand. Change anything you like; your edits are kept.</p>
             )}
           </div>
         </div>
@@ -415,7 +415,7 @@ function BrandProfile() {
           </Section>
           )}
 
-          {tab === "content" && (
+          {tab === "audience" && (
           <Section id="content" title="What to post about" model={model} onLock={lock}>
             <div className="space-y-6">
               <div>
@@ -442,7 +442,7 @@ function BrandProfile() {
 
           {tab === "more" && (
             <>
-              <p className="text-sm text-text-muted">Optional depth: positioning, character, personality, look, words, audience and products.</p>
+              <p className="text-sm text-text-muted">Optional extras for fine-tuning. You can skip all of this.</p>
               <PositioningSection model={model} edit={edit} onLock={lock} />
               <IdentitySection model={model} edit={edit} onLock={lock} />
               <PersonalitySection model={model} edit={edit} onLock={lock} />
@@ -518,14 +518,13 @@ function BrandProfile() {
   );
 }
 
-type TabId = "about" | "look" | "voice" | "audience" | "content" | "more";
+type TabId = "about" | "look" | "voice" | "audience" | "more";
 const TABS: { id: TabId; label: string }[] = [
   { id: "about", label: "About" },
   { id: "look", label: "Look" },
   { id: "voice", label: "Voice" },
-  { id: "audience", label: "Audience" },
-  { id: "content", label: "Content" },
-  { id: "more", label: "More" },
+  { id: "audience", label: "Audience & posts" },
+  { id: "more", label: "Advanced" },
 ];
 const TAB_OF_SECTION: Record<string, TabId> = {
   identity: "about",
@@ -533,7 +532,7 @@ const TAB_OF_SECTION: Record<string, TabId> = {
   "expression.tokens.font": "look",
   voice: "voice",
   "strategy.audience": "audience",
-  content: "content",
+  content: "audience",
 };
 
 const SECTION_NAMES: Record<string, string> = {

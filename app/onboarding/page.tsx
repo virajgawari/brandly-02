@@ -8,7 +8,7 @@ import AppShell from "@/components/layout/AppShell";
 import { Button, Input, Select, Textarea } from "@/components/ui";
 import { BUSINESS_MODELS, INDUSTRIES, PRIMARY_GOALS, type BusinessModel, type Industry, type PrimaryGoal } from "@/lib/brand/taxonomy";
 import { BrandAssets, productsToPhotos, type LogoAsset, type ProductAsset } from "@/components/onboarding/BrandAssets";
-import { ChipGroup, LiveFindings, OnboardingShell, Question, TierCards } from "@/components/onboarding/kit";
+import { ChipGroup, LiveBrandBoard, LiveFindings, OnboardingShell, Question, TierCards } from "@/components/onboarding/kit";
 import { brandNameFromTitle, nameFromUrl } from "@/lib/brand/naming";
 import { BrandPostPreview, PaletteStrip } from "@/components/brand/BrandPreview";
 import { afterSync, useStore } from "@/lib/store";
@@ -455,11 +455,11 @@ export default function OnboardingPage() {
       {step === "reading" && (
         <OnboardingShell
           title={running ? `Reading ${runName || "your brand"}` : error ? "That didn't work" : "Done"}
-          subtitle={running ? "This takes about 20–40 seconds. Here's what we've found so far." : undefined}
+          subtitle={running ? "Watch your brand take shape. This can take a minute on bigger sites." : undefined}
           onBack={running ? undefined : () => setStep(hasSite ? "assets" : "name")}
           primary={error ? { label: "Try again", onClick: readBrand } : undefined}
         >
-          <LiveFindings findings={findings} running={running} />
+          <LiveBrandBoard findings={findings} running={running} />
           {error && <p className="mt-4 text-sm text-error">{error}</p>}
         </OnboardingShell>
       )}

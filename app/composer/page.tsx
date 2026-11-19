@@ -458,7 +458,9 @@ export default function ComposerPage() {
       <div className="p-4 sm:p-8 max-w-6xl mx-auto">
         {!editing && (
           <div className="max-w-3xl mx-auto text-center space-y-6">
-            <PageHeader title="What do you want to post?" subtitle={`Creating content for ${brand.name}`} />
+            <div className="text-left">
+              <PageHeader title="What do you want to post?" subtitle={`Writing for ${brand.name}`} />
+            </div>
             <Textarea
               label="Describe the post you want"
               placeholder="e.g. Announce our new monsoon blend and why it's perfect for rainy mornings"

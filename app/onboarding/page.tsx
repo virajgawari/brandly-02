@@ -232,25 +232,29 @@ export default function OnboardingPage() {
   const modelFromAnswers = useCallback((): BrandModel => {
     const base = model ?? emptyModel(name.trim(), door === "refine" ? "refine" : "build", draftId);
     const countries = answers.countries.split(",").map((c) => c.trim()).filter(Boolean);
+    // Skipped screens leave answers empty; an empty answer must not overwrite what is already known.
+    const keep = <T,>(v: T): T | undefined =>
+      v === undefined || v === "" || (Array.isArray(v) && v.length === 0) ? undefined : v;
+    const competitors = answers.competitors.split(",").map((c) => c.trim()).filter(Boolean);
     return mergePatch(
       base,
       {
         name: name.trim(),
         strategy: {
-          offering: answers.offering,
-          category: answers.category,
+          offering: keep(answers.offering),
+          category: keep(answers.category),
           industry: answers.industry,
           businessModel: answers.businessModel,
           primaryGoal: answers.primaryGoal,
-          competitors: answers.competitors.split(",").map((c) => c.trim()).filter(Boolean),
+          competitors: keep(competitors),
           audience: {
             gender: answers.gender[0],
-            ageGroups: answers.ageGroups,
+            ageGroups: keep(answers.ageGroups),
             affluence: answers.affluence,
-            markets: { countries, cityTiers: answers.cityTiers },
-            languages: answers.languages,
-            motivations: answers.motivations,
-            moments: answers.moments,
+            markets: { countries: keep(countries), cityTiers: keep(answers.cityTiers) },
+            languages: keep(answers.languages),
+            motivations: keep(answers.motivations),
+            moments: keep(answers.moments),
           },
         },
         personality: scorePersonality(answers.personality),

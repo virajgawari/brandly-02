@@ -10,6 +10,20 @@ export function imagePromptFromBrief(brief: VisualBrief | undefined, model?: Bra
   const c = model?.expression.tokens.color;
   const hexes = c ? [c.primary.$value, c.secondary.$value, c.accent.$value] : dna ? [dna.colors.primary, dna.colors.secondary, dna.colors.accent] : [];
   const colours = paletteToWords(hexes);
+  const guide = model?.expression.styleGuide;
+  if (guide?.promptSuffix) {
+    // Five parts: medium and style, subject and action, composition and negative space, lighting and palette, texture and exclusions.
+    return [
+      guide.medium && `${guide.medium}.`,
+      `${brief.subject}${brief.setting ? `, ${brief.setting}` : ""}.`,
+      `${brief.composition ? `${brief.composition}. ` : ""}Calm, empty negative space for a headline.`,
+      brief.lighting && `${brief.lighting}.`,
+      guide.promptSuffix.replace(/\s+$/, ""),
+      "No text, letters, logos or watermarks, no clutter.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
   const imagery = model?.expression.imageryStyle || dna?.visual_style || "";
   const assets = model?.expression.distinctiveAssets?.slice(0, 2) ?? [];
   const vibe = (model?.content.vibe ?? dna?.vibe ?? []).slice(0, 3);

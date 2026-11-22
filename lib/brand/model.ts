@@ -188,7 +188,39 @@ export interface BrandPhoto {
   product?: { name: string; note?: string };
 }
 
+/** Visual identity reverse-engineered from the brand's real top posts. */
+export interface StyleGuide {
+  medium: string;
+  palette: string;
+  composition: string;
+  typography: string;
+  /** Share (0-100) of the brand's images that carry overlaid text. */
+  textOnImagePct?: number;
+  /** ~40 words of lighting, medium, colour mood and aesthetic with no subject. Appended to every image prompt. */
+  promptSuffix: string;
+}
+
+/** Copywriting rules learned from the brand's real posts. */
+export interface Playbook {
+  /** Content pillars with their share of posts; shares add up to about 100. */
+  pillars: { name: string; pct: number }[];
+  adjectives: string[];
+  neverSoundsLike: string;
+  hookFormulas: string[];
+  formatting: { avgWords: number; lineBreaks: string; emoji: string };
+  cta: string;
+  hashtagRule: string;
+  blacklist: string[];
+  /** Share of posts per post format id (FORMATS in lib/content/brief.ts), learned from the feed. */
+  formatMix?: { format: string; pct: number }[];
+  /** Share of the feed by post type, counted from the scraped posts (not by the model). */
+  postTypeMix?: { image: number; carousel: number; video: number };
+  /** Captions of the best posts, used as few-shot style anchors. */
+  anchors: string[];
+}
+
 export interface Expression {
+  styleGuide?: StyleGuide;
   tokens: {
     color: {
       primary: ColorToken;
@@ -222,6 +254,7 @@ export interface Tone {
 }
 
 export interface Voice {
+  playbook?: Playbook;
   tone: Tone;
   /** Per-platform overrides of `tone`. Read through `effectiveTone` in scale.ts. */
   toneByPlatform?: Partial<Record<Platform, Partial<Tone>>>;

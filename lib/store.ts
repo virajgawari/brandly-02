@@ -93,6 +93,9 @@ export function afterSync(key: string) {
   return queues.get(key) ?? Promise.resolve();
 }
 
+/** Brands whose DELETE has not finished. A re-hydrate in that window must not bring them back. */
+const deleting = new Set<string>();
+
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -106,15 +109,15 @@ export const useStore = create<AppState>()(
       hydrate: async () => {
         try {
           const data = await api("GET", "/api/bootstrap");
-          const brands = data.brands as Brand[];
+          const brands = (data.brands as Brand[]).filter((b) => !deleting.has(b.id));
           const active = get().activeBrandId;
           set({
             hydrated: true,
             loadError: null,
             account: { user: data.user, workspace: data.workspace, role: data.role },
             brands,
-            posts: data.posts,
-            automationRules: data.rules,
+            posts: (data.posts as ScheduledPost[]).filter((p) => !deleting.has(p.brandId)),
+            automationRules: (data.rules as AutomationRule[]).filter((r) => !deleting.has(r.brandId)),
             activeBrandId: brands.some((b) => b.id === active) ? active : brands[0]?.id ?? null,
           });
         } catch (err) {
@@ -147,7 +150,8 @@ export const useStore = create<AppState>()(
           automationRules: s.automationRules.filter((r) => r.brandId !== id),
           activeBrandId: s.activeBrandId === id ? (s.brands.find((b) => b.id !== id)?.id ?? null) : s.activeBrandId,
         }));
-        sync(id, "DELETE", `/api/brands/${id}`);
+        deleting.add(id);
+        void sync(id, "DELETE", `/api/brands/${id}`).finally(() => deleting.delete(id));
       },
 
       setActiveBrand: (id) => set({ activeBrandId: id }),

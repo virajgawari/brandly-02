@@ -219,6 +219,8 @@ export interface GeneratePostPayload {
   additionalContext?: string;
   /** Product carousel: the products to show, in order (max 8, paths from the brand's product photos). */
   products?: ProductRef[];
+  /** One post about one chosen product: never turn it into a carousel. */
+  single?: boolean;
 }
 
 /** A product photo picked for a product carousel. */

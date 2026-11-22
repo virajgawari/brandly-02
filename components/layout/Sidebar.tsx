@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import clsx from "clsx";
-import { CalendarDays, Check, ChevronsUpDown, Home, Images, LogOut, Package, Palette, PenLine, Plus, Settings, SlidersHorizontal, Workflow, Zap, Ellipsis } from "lucide-react";
+import { Activity, CalendarDays, Check, ChevronsUpDown, Home, Images, LogOut, Package, Palette, PenLine, Plus, Settings, SlidersHorizontal, Workflow, Zap, Ellipsis } from "lucide-react";
 import { useStore } from "@/lib/store";
 
 type NavItem = { href: string; icon: typeof Home; label: string };
@@ -112,7 +112,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 p-3 space-y-0.5" aria-label="Main">
-        {[...NAV_GROUPS, ...(isAdmin ? [{ label: "Admin", items: [{ href: "/admin/agent", icon: SlidersHorizontal, label: "Admin" }] }] : [])].map((g, gi) => (
+        {[...(activeBrand ? NAV_GROUPS : [{ items: [HOME] }]), ...(isAdmin ? [{ label: "Admin", items: [{ href: "/admin/agent", icon: SlidersHorizontal, label: "Learning agent" }, { href: "/admin/activity", icon: Activity, label: "Activity" }] }] : [])].map((g, gi) => (
           <div key={g.label ?? gi} className={gi ? "pt-3" : ""}>
             {g.label && g.label !== "Admin" && <p className="px-2.5 pb-1 text-[11px] uppercase tracking-wide text-text-muted/80">{g.label}</p>}
             {g.items.map(({ href, icon: Icon, label }) => {

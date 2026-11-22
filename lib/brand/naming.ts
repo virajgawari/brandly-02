@@ -23,7 +23,7 @@ export function nameFromUrl(url: string): string {
  */
 export function brandNameFromTitle(title: string | undefined, url: string): string {
   const parts = (title ?? "")
-    .split(/\s+[|–—\-:·]\s+|[|–—·]/)
+    .split(/\s+[|–—\-:·]\s+|[|–—·]|:\s+/)
     .map((p) => p.trim())
     .filter(Boolean);
   const host = squash(hostWord(url));

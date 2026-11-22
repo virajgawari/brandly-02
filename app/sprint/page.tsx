@@ -6,6 +6,7 @@ import AppShell from "@/components/layout/AppShell";
 import { Button, Card, EmptyState, Input, PageHeader, SectionLabel, Textarea } from "@/components/ui";
 import { useStore } from "@/lib/store";
 import { campaignTopic, CAMPAIGN_RATIOS, maxCampaignCalls, type CampaignBrief, type CampaignRatio } from "@/lib/content/campaign";
+import { ScoreBadge } from "@/components/composer/ScoreBadge";
 import type { GeneratedPost, Platform, RenderedMedia, ScheduledPost, TemplateCategory } from "@/lib/types";
 
 const SIZE_OF: Record<CampaignRatio, RenderedMedia["size"]> = { "4:5": "1080x1350", "1:1": "1080x1080", "9:16": "1080x1920" };
@@ -37,14 +38,14 @@ export default function SprintPage() {
   }
   const model = brand.model;
 
-  const plan = async () => {
+  const plan = async (text: string = request) => {
     setPlanning(true);
     setError(null);
     setBrief(null);
     setSlots([]);
     setSaved(false);
     try {
-      const res = await fetch("/api/campaign/brief", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandModel: model, request }) });
+      const res = await fetch("/api/campaign/brief", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandModel: model, request: text }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.brief) throw new Error(data.error ?? "Couldn't plan the sprint just now.");
       setBrief(data.brief as CampaignBrief);
@@ -133,11 +134,31 @@ export default function SprintPage() {
   return (
     <AppShell>
       <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8 space-y-6">
-        <PageHeader title="Sprint" subtitle="Describe a push in one sentence. Brandly plans four posts that build on each other." />
+        <PageHeader title="Sprint" subtitle="Describe a push in one sentence. Brandly plans a few posts in your Instagram style, as many as you ask for." />
 
         <Card className="p-5 space-y-3">
           <Textarea label="What are you pushing?" value={request} onChange={(e) => setRequest(e.target.value)} placeholder="e.g. Launch our new cold brew next week and get people to try it" rows={2} />
-          <Button loading={planning} disabled={request.trim().length < 5} onClick={plan}>Plan sprint</Button>
+          {model.expression.styleGuide || model.voice.playbook ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+              <span className="rounded-full border border-border px-2 py-0.5">Using your Instagram style and playbook</span>
+              <button
+                type="button"
+                className="underline underline-offset-2 hover:text-text"
+                onClick={() => {
+                  const text = "A week of posts that follow my usual content mix, with a clear call to action each time";
+                  setRequest(text);
+                  void plan(text);
+                }}
+              >
+                Plan a week from my playbook now
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-text-muted">
+              Tip: <a href="/brand" className="underline underline-offset-2 hover:text-text">learn from your Instagram</a> so posts match your real style.
+            </p>
+          )}
+          <Button loading={planning} disabled={request.trim().length < 5} onClick={() => plan()}>Plan sprint</Button>
           {error && <p className="text-sm text-error">{error}</p>}
         </Card>
 
@@ -156,7 +177,7 @@ export default function SprintPage() {
                 </button>
               ))}
             </div>
-            <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               {brief.posts.map((p, i) => (
                 <div key={i} className="rounded-xl border border-border p-3 space-y-2">
                   <Input label={`Post ${i + 1}`} value={p.title} onChange={(e) => patchPost(i, { title: e.target.value })} />
@@ -166,13 +187,16 @@ export default function SprintPage() {
                   {slots[i]?.imaging && <p className="text-xs text-text-muted">Making the image…</p>}
                   {slots[i]?.post?.rendered?.urls[0] && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={slots[i].post!.rendered!.urls[0]} alt={slots[i].post!.headline || `Post ${i + 1}`} className="w-40 rounded-lg border border-border" />
+                    <img src={slots[i].post!.rendered!.urls[0]} alt={slots[i].post!.headline || `Post ${i + 1}`} className="w-full rounded-lg border border-border" />
                   )}
                   {slots[i]?.post && (
-                    <div className="text-sm bg-surface-2 rounded-lg p-3">
-                      {slots[i].post!.headline && <p className="font-medium">{slots[i].post!.headline}</p>}
-                      <p className="text-text-muted whitespace-pre-line">{slots[i].post!.caption}</p>
-                    </div>
+                    <>
+                      <div className="text-sm bg-surface-2 rounded-lg p-3">
+                        {slots[i].post!.headline && <p className="font-medium">{slots[i].post!.headline}</p>}
+                        <p className="text-text-muted whitespace-pre-line">{slots[i].post!.caption}</p>
+                      </div>
+                      <ScoreBadge post={slots[i].post!} model={model} />
+                    </>
                   )}
                 </div>
               ))}

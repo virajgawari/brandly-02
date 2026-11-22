@@ -33,6 +33,18 @@ describe("buildIdeasPrompt", () => {
   });
 });
 
+describe("buildIdeasPrompt with a playbook", () => {
+  it("adds the feed's pillar shares and best posts", () => {
+    const m = { ...model, voice: { playbook: { pillars: [{ name: "Brew guides", pct: 60 }], anchors: ["Pour slow. Taste the difference."] } } } as unknown as BrandModel;
+    const p = buildIdeasPrompt(m);
+    expect(p).toContain("Brew guides 60%");
+    expect(p).toContain("1. Pour slow. Taste the difference.");
+  });
+  it("adds nothing feed-related without one", () => {
+    expect(buildIdeasPrompt(model)).not.toContain("real Instagram");
+  });
+});
+
 describe("cleanIdeas", () => {
   it("drops duplicate titles and caps the count", () => {
     const mk = (title: string) => ({ title, pitch: "Something to say.", template: "engagement" });

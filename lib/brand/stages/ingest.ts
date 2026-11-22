@@ -1,9 +1,11 @@
-import { analyseImages, parseJSON } from "../../llm";
+import { z } from "zod";
+import { analyseImages, generateStructured, parseJSON } from "../../llm";
 import type { PageEvidence, WebsiteEvidence } from "../../web";
 import { crawlSite } from "../../crawl";
 import { VisualInsightsSchema, type VisualInsights } from "../schemas";
 import { evidenceId, type Evidence } from "../model";
-import type { StageDefinition } from "./types";
+import type { Finding, StageDefinition } from "./types";
+import { analyseVisual, type VisualResult } from "./visual";
 
 export interface IngestInput {
   websiteUrl?: string;
@@ -11,6 +13,8 @@ export interface IngestInput {
   /** Base64 JPEGs: rasterised PDF pages and/or Instagram screenshots. */
   images?: string[];
   imageSource?: "pdf" | "instagram" | "upload";
+  /** Data URI of a logo the owner uploaded. */
+  logoImage?: string;
 }
 
 export interface IngestOutput {
@@ -23,6 +27,8 @@ export interface IngestOutput {
   igHandle?: string;
   /** Content photos found on the website, stored as brand photos after the run. */
   photoUrls?: string[];
+  /** Logo/photo analysis started during the crawl; the visual stage reuses it. */
+  visualPre?: VisualResult;
 }
 
 const VISION_PROMPT = `These images come from one brand (catalogue pages, social posts or screenshots).
@@ -39,6 +45,23 @@ Describe what is actually visible. Return JSON:
 }`;
 
 /** Collects raw evidence. No brand decisions are made here. */
+const QuickSchema = z.object({ what: z.string().min(3).max(200) });
+
+/** Display-only first impression from the home page copy, shown while the full read continues. Never throws. */
+async function quickRead(h: WebsiteEvidence, report: (f: Finding) => void): Promise<void> {
+  const copy = [h.title, h.description, ...h.headings.slice(0, 6), h.copySample.slice(0, 600)].filter(Boolean).join("\n");
+  if (copy.length < 20) return;
+  try {
+    const r = await Promise.race([
+      generateStructured(QuickSchema, 'In one plain sentence (max 25 words), say what this business does and who it serves, from its home page text. Reply as {"what": "<sentence>"}.', copy, { task: "fast", maxTokens: 120 }),
+      new Promise<null>((res) => setTimeout(() => res(null), 8000)),
+    ]);
+    if (r) report({ id: "quick", label: "First impression", detail: r.what, status: "info" });
+  } catch {
+    /* display-only: ignore */
+  }
+}
+
 export const ingestStage: StageDefinition<IngestInput> = {
   id: "ingest",
   label: "Reading your sources",
@@ -55,10 +78,18 @@ export const ingestStage: StageDefinition<IngestInput> = {
       jobs.push(
         (async () => {
           report({ id: "site", label: "Reading your website", status: "info" });
+          let visualP: Promise<VisualResult> | undefined;
           try {
             const { home: site, pages } = await crawlSite(input.websiteUrl!, {
+              // Like Pomelli: the home page plus a handful of key pages (about/products first) is enough to read a brand.
+              maxPages: 6,
+              budgetMs: 8_000,
+              perPageTimeoutMs: 4_000,
               // Show what the home page already tells us while the rest of the site is still being read.
               onHome: (h) => {
+                // Logo and photo colours don't need the other pages: start them now, in parallel with the crawl.
+                visualP = analyseVisual(input.logoImage ?? h.logoUrl ?? undefined, h.images, !!input.logoImage, report).catch(() => ({ output: {} }));
+                void quickRead(h, report);
                 report({ id: "site", label: `Read ${new URL(h.url).hostname}`, detail: h.title || undefined, status: "done" });
                 if (h.logoUrl) report({ id: "logo", label: "Found your logo", status: "done", image: h.logoUrl });
                 if (h.colors.length) report({ id: "colors", label: `Found ${h.colors.length} brand colours`, status: "done", swatches: h.colors });
@@ -69,6 +100,7 @@ export const ingestStage: StageDefinition<IngestInput> = {
             });
             output.website = site;
             output.pages = pages;
+            if (visualP) output.visualPre = await visualP;
             output.sitePages = [
               { url: site.url, title: site.title, description: site.description, headings: site.headings, text: site.copySample, images: site.images.slice(0, 8) },
               ...pages,

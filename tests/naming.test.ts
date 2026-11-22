@@ -25,4 +25,7 @@ describe("brandNameFromTitle", () => {
   it("keeps hyphens inside a name", () => {
     expect(brandNameFromTitle("Coca-Cola India", "coca-cola.in")).toBe("Coca-Cola India");
   });
+  it("splits a title on a colon with no space before it", () => {
+    expect(brandNameFromTitle("Ventura: Online Trading Platform, Share Market Investment", "https://www.venturasecurities.com/")).toBe("Ventura");
+  });
 });

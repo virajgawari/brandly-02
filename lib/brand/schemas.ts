@@ -125,6 +125,34 @@ export const ExtractSchema = z.object({
 });
 export type ExtractResult = z.infer<typeof ExtractSchema>;
 
+/** Output of the vision call over the top posts' images. */
+export const StyleGuideSchema = z.object({
+  medium: str,
+  palette: str,
+  composition: str,
+  typography: str,
+  promptSuffix: str,
+  /** Share (0-100) of the sampled images that carry overlaid text or graphics. Optional. */
+  textOnImagePct: z.coerce.number().min(0).max(100).optional().catch(undefined),
+});
+
+/** Output of the copy call over the cleaned posts. Anchors are added in code, not by the model. */
+export const PlaybookSchema = z.object({
+  pillars: z.array(z.object({ name: str, pct: z.coerce.number().catch(0) })).catch([]),
+  adjectives: strArr,
+  neverSoundsLike: str,
+  hookFormulas: strArr,
+  formatting: z
+    .object({ avgWords: z.coerce.number().catch(0), lineBreaks: str, emoji: str })
+    .catch({ avgWords: 0, lineBreaks: "", emoji: "" }),
+  cta: str,
+  hashtagRule: str,
+  blacklist: strArr,
+  /** Share of posts per format id (see FORMATS in lib/content/brief.ts). */
+  formatMix: z.array(z.object({ format: str, pct: z.coerce.number().catch(0) })).catch([]),
+});
+export type PlaybookResult = z.infer<typeof PlaybookSchema>;
+
 export const ContentSystemSchema = z.object({
   pillars: strArr,
   categoryEntryPoints: strArr,

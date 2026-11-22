@@ -121,7 +121,15 @@ export default function PlatformPreview({ post, platforms, brandDNA, igHandle, i
             }}
           >
             <p className="text-xs font-medium text-text mb-2">{imageLoading ? "Laying out your post…" : "Image idea"}</p>
-            <p className="text-xs text-text-muted leading-relaxed max-w-xs">{post.imagePrompt}</p>
+            {imageLoading ? (
+              <div className="w-full max-w-xs space-y-2 animate-pulse" aria-hidden>
+                <div className="h-2 rounded bg-text/10" />
+                <div className="h-2 rounded bg-text/10 w-4/5 mx-auto" />
+                <div className="h-2 rounded bg-text/10 w-3/5 mx-auto" />
+              </div>
+            ) : (
+              <p className="text-xs text-text-muted leading-relaxed max-w-xs line-clamp-6">{post.imagePrompt}</p>
+            )}
           </div>
         )}
 

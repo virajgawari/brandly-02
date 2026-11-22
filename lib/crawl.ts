@@ -121,8 +121,16 @@ export interface CrawlOptions {
 
 /** Reads the home page, then up to `maxPages - 1` more same-site pages, politely and within a time budget. */
 export async function crawlSite(rawUrl: string, opts: CrawlOptions = {}): Promise<CrawlResult> {
-  const { maxPages = 25, concurrency = 4, budgetMs = 45_000, perPageTimeoutMs = 8_000, onPage, onHome } = opts;
+  const { maxPages = 25, concurrency = 8, budgetMs = 25_000, perPageTimeoutMs = 5_000, onPage, onHome } = opts;
   const started = Date.now();
+  // robots.txt doesn't depend on the home page: fetch both at once.
+  const robotsP = (async () => {
+    try {
+      return await fetchCapped(new URL("/robots.txt", new URL(/^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`).origin).toString(), 100_000, 4_000);
+    } catch {
+      return null;
+    }
+  })();
   const home = await fetchWebsiteEvidence(rawUrl);
   try {
     onHome?.(home);
@@ -132,12 +140,8 @@ export async function crawlSite(rawUrl: string, opts: CrawlOptions = {}): Promis
   const origin = new URL(home.url).origin;
 
   let allowed = (_: string) => true;
-  try {
-    const robots = await fetchCapped(new URL("/robots.txt", origin).toString(), 100_000, 5_000);
-    if (robots) allowed = parseRobots(robots.text);
-  } catch {
-    /* no robots.txt: everything allowed */
-  }
+  const robots = await robotsP;
+  if (robots) allowed = parseRobots(robots.text);
 
   let candidates = selectLinks(home.links, origin, maxPages * 2);
   if (candidates.length < 10) candidates = selectLinks([...candidates, ...(await readSitemap(origin, maxPages))], origin, maxPages * 2);
@@ -153,7 +157,10 @@ export async function crawlSite(rawUrl: string, opts: CrawlOptions = {}): Promis
       const url = queue[next++];
       if (!url) return;
       try {
-        const p = await fetchPageEvidence(url, perPageTimeoutMs);
+        // Don't let a slow page run past the crawl budget.
+        const left = budgetMs - (Date.now() - started);
+        if (left <= 0) return;
+        const p = await Promise.race([fetchPageEvidence(url, Math.min(perPageTimeoutMs, left + 500)), new Promise<null>((r) => setTimeout(() => r(null), left + 500))]);
         if (!p || p.text.length < 80) continue;
         const finalKey = normaliseUrl(p.url) ?? p.url;
         const fp = p.text.slice(0, 300);

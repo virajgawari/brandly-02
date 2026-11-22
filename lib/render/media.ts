@@ -8,6 +8,9 @@ import type { GeneratedPost, RenderedMedia } from "@/lib/types";
 import { imageFromStorage, imageFromUrl, imageTone } from "./assets";
 import { layoutKitOf } from "./kit";
 import { museEnabled, museImage, type MuseAspect } from "./muse";
+import { topStylePaths } from "@/lib/social/store";
+
+const STYLE_REFS = 3;
 
 export type PhotoRef = NonNullable<RenderedMedia["photo"]>;
 
@@ -54,10 +57,20 @@ export async function generatePhoto(session: Session | null, model: BrandModel, 
 
   if (museEnabled()) {
     const { paths, notes } = session && !promptOverride ? referencePaths(model, post) : { paths: [], notes: [] };
-    const refs = session ? (await Promise.all(paths.map((p) => imageFromStorage(session.db, "images", p, { maxSide: 1024 })))).filter((x): x is string => !!x) : [];
-    const prompt = refs.length
-      ? `Keep the product from the reference photo exactly as it looks (shape, label, colour) and place it in this scene: ${imagePrompt}${notes.length ? ` Product: ${notes.join("; ")}.` : ""}`
-      : imagePrompt;
+    const load = async (list: string[]) =>
+      session ? (await Promise.all(list.map((p) => imageFromStorage(session.db, "images", p, { maxSide: 1024 })))).filter((x): x is string => !!x) : [];
+    // Style references come first: the brand's best scraped posts, when it has a style guide.
+    const stylePaths = session && model.expression.styleGuide ? await topStylePaths(session.db, session.workspaceId, model.id, STYLE_REFS) : [];
+    const styleRefs = await load(stylePaths);
+    const productRefs = await load(paths);
+    const parts = [
+      styleRefs.length && `Adopt the lighting and editorial mood of the first ${styleRefs.length} reference image${styleRefs.length > 1 ? "s" : ""}. Do not copy their subjects, and do not copy their colour treatment: render in full natural colour using the palette described in the scene below, never black and white.`,
+      productRefs.length && `Keep the product from ${styleRefs.length ? "the last reference photo" : "the reference photo"} exactly as it looks (shape, label, colour) and place it in this scene:`,
+      productRefs.length || styleRefs.length ? imagePrompt : "",
+      productRefs.length && notes.length && `Product: ${notes.join("; ")}.`,
+    ].filter(Boolean);
+    const refs = [...styleRefs, ...productRefs];
+    const prompt = refs.length ? parts.join(" ") : imagePrompt;
     const buf = await llmScope("image", { brandId: model.id }, () => museImage({ prompt, aspect, references: refs }));
     if (buf) {
       if (!session) return undefined; // nowhere to keep it; signed-out use falls through to n8n
@@ -112,6 +125,11 @@ export async function loadPhotoRefs(session: Session | null, model: BrandModel, 
 
 /** Chooses where the photo comes from: the brand's own photo whenever it has one, else a generated one. */
 export async function resolvePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, history: ContentHistory, aspect: MuseAspect): Promise<PhotoRef | undefined> {
+  // With a style guide, Muse renders every post in the brand's look; real photos are the fallback.
+  if (model.expression.styleGuide && museEnabled()) {
+    const generated = await generatePhoto(session, model, post, aspect);
+    if (generated) return generated;
+  }
   const brand = pickBrandPhoto(model, history, !!post.visualBrief?.usesProductPhoto);
   if (brand) return brand;
   return generatePhoto(session, model, post, aspect);

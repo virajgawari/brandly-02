@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
       topic: body.topic,
       tone: body.tone,
       additionalContext: body.additionalContext,
+      single: !!body.single,
       n8nBody: body as unknown as Record<string, unknown>,
     });
     if ("error" in result) return NextResponse.json({ error: result.error }, { status: result.status });

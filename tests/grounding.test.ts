@@ -62,4 +62,13 @@ describe("groundingIssues", () => {
     const issues = groundingIssues({ caption: "Get 20% off this weekend. Use code WEEKEND20. Ask for Priya at the Indiranagar cafe." }, facts);
     expect(issues).toEqual([]);
   });
+
+  it("flags an invented customer quote but allows one that is in the facts", () => {
+    const bad = groundingIssues({ caption: "A regular told us, “It's the first time I've felt coffee so effortless.”" }, FACTS);
+    expect(bad.some((i) => i.startsWith("quote"))).toBe(true);
+    const ok = groundingIssues({ caption: "Roasted on Monday. At your door by Thursday." }, FACTS);
+    expect(ok).toEqual([]);
+    const sample = groundingIssues({ caption: 'Our line: "Roasted on Monday. At your door by Thursday."' }, FACTS);
+    expect(sample).toEqual([]);
+  });
 });

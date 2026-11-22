@@ -4,6 +4,7 @@ import { chooseLayout, layoutNeedsPhoto } from "@/lib/content/brief";
 import { recentPosts } from "@/lib/content/history";
 import { errorResponse, requireSession } from "@/lib/db/session";
 import { layoutKitOf } from "@/lib/render/kit";
+import { museEnabled } from "@/lib/render/muse";
 import { encodeForUpload, fillSlidePhotos, generatePhoto, generateSlidePhotos, loadPhotoRefs, loadSlidePhotos, loadVisuals, pickBrandPhotos, resolvePhoto, storeRendered, type PhotoRef } from "@/lib/render/media";
 import { renderPost, type RenderSize } from "@/lib/render/render";
 import { scenePrompt } from "@/lib/render/scenes";
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
     const layout: LayoutId =
       wanted && (LAYOUT_IDS as readonly string[]).includes(wanted)
         ? wanted
-        : chooseLayout(kit, b.post.format, history, { carousel: (b.post.slides?.length ?? 0) >= 2 });
+        : chooseLayout(kit, b.post.format, history, { textOnImagePct: model?.expression.styleGuide?.textOnImagePct, carousel: (b.post.slides?.length ?? 0) >= 2 });
 
     const aspect = size === "1080x1080" ? "1:1" : size === "1080x1920" ? "9:16" : "4:5";
     const isProduct = layout === "product-cover";
@@ -73,8 +74,11 @@ export async function POST(req: NextRequest) {
       } else if (given.length) slideRefs = fillSlidePhotos(b.slidePhotos ?? [], slideCount);
       else if (photo) slideRefs = fillSlidePhotos([photo], slideCount);
       else if (b.photo === undefined || b.photo === "auto") {
-        const brand = pickBrandPhotos(model, history, slideCount, !!b.post.visualBrief?.usesProductPhoto);
-        if (brand.length) slideRefs = fillSlidePhotos(brand, slideCount);
+        // With a learned style guide, Muse renders the slides in the brand's look; real photos are the fallback.
+        const styled = model.expression.styleGuide && museEnabled() ? await generateSlidePhotos(session, model, b.post, aspect) : [];
+        const brand = styled.some(Boolean) ? [] : pickBrandPhotos(model, history, slideCount, !!b.post.visualBrief?.usesProductPhoto);
+        if (styled.some(Boolean)) slideRefs = fillSlidePhotos(styled, slideCount);
+        else if (brand.length) slideRefs = fillSlidePhotos(brand, slideCount);
         else slideRefs = fillSlidePhotos(await generateSlidePhotos(session, model, b.post, aspect), slideCount);
       }
       photo = slideRefs?.[0];

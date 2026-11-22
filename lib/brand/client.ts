@@ -9,7 +9,9 @@ export async function runPipeline(
   model: BrandModel,
   input: Record<string, unknown>,
   onFindings: (f: Finding[]) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** Called with the merged model after each group of stages, so the UI can show it early. */
+  onPartial?: (model: BrandModel) => void
 ): Promise<RunResult> {
   const res = await fetch(`/api/brands/${encodeURIComponent(model.id)}/run`, {
     method: "POST",
@@ -38,10 +40,13 @@ export async function runPipeline(
         | { type: "finding"; finding: Finding }
         | { type: "done"; result: RunResult }
         | { type: "error"; error: string }
+        | { type: "partial"; model: BrandModel }
         | { type: "ping" };
       if (event.type === "finding") {
         findings.set(event.finding.id, event.finding);
         onFindings([...findings.values()]);
+      } else if (event.type === "partial") {
+        onPartial?.(event.model);
       } else if (event.type === "done") {
         return event.result;
       } else if (event.type === "error") {

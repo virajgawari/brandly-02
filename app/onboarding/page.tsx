@@ -13,6 +13,7 @@ import { brandNameFromTitle, nameFromUrl } from "@/lib/brand/naming";
 import { BrandPostPreview, PaletteStrip } from "@/components/brand/BrandPreview";
 import { afterSync, useStore } from "@/lib/store";
 import { track } from "@/lib/track";
+import { queueInstagramLearning } from "@/lib/social/autolearn";
 import { emptyModel, AGE_GROUPS, MOMENTS, MOTIVATIONS, type Affluence, type AgeGroup, type BrandModel, type CityTier, type Gender, type Moment, type Motivation } from "@/lib/brand/model";
 import { mergePatch } from "@/lib/brand/merge";
 import { AFFLUENCE_OPTIONS, AGE_LABELS, CITY_TIER_LABELS, GENDER_OPTIONS, LANGUAGE_OPTIONS, MOMENT_LABELS, MOTIVATION_LABELS } from "@/lib/brand/audience";
@@ -224,6 +225,7 @@ export default function OnboardingPage() {
       { website: websiteUrl.trim() || undefined, instagram: igHandle.trim() || undefined, pdfName: pdf?.name },
       { source: "stage", stageId: "pipeline:analyse" }
     );
+    if (igHandle.trim()) queueInstagramLearning(confirmed.id);
     setRunning(false);
       setStep("ready");
   };
@@ -293,6 +295,7 @@ export default function OnboardingPage() {
       saveBrandModel(result.model, door === "refine" ? { website: websiteUrl.trim() || undefined, instagram: igHandle.trim() || undefined } : {}, { source: "build" });
       // Every direction shown + the one picked: preference data for improving directions later.
       const brandId = result.model.id;
+      if (door === "refine" && igHandle.trim()) queueInstagramLearning(brandId);
       afterSync(brandId).then(() =>
         fetch("/api/build-sessions", {
           method: "POST",
@@ -365,7 +368,7 @@ export default function OnboardingPage() {
           step={stepNo}
           total={flow.length}
           title="Got an Instagram?"
-          subtitle="Optional. We note your handle; screenshots on the next step let us study your posts."
+          subtitle="Optional. We read your best posts to learn how they look and sound. Screenshots on the next step help too."
           onBack={goBack()}
           primary={{ label: "Continue", onClick: () => setStep("files") }}
           secondary={{ label: "Skip", onClick: () => setStep("files") }}

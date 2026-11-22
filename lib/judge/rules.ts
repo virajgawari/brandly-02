@@ -11,6 +11,8 @@ export interface ScoreInput {
   error?: string;
   /** Text the model was given. When set, specifics not found in it count as invented. */
   facts?: string;
+  /** Allowed hashtag count; defaults to 5-10. Brands whose playbook says "1 hashtag" pass a tighter range. */
+  hashtags?: { min: number; max: number };
 }
 
 export interface Scores {
@@ -46,7 +48,7 @@ export function scorePost(i: ScoreInput): { scores: Scores; passed: boolean; fai
     schemaOk: true,
     noBanned: hits.length === 0,
     captionWithinLimit: p.caption.length <= limit && variantOver.length === 0,
-    hashtagCount: p.hashtags.length >= 5 && p.hashtags.length <= 10,
+    hashtagCount: p.hashtags.length >= (i.hashtags?.min ?? 5) && p.hashtags.length <= (i.hashtags?.max ?? 10),
     noEmojiFirst: !firsts.some((t) => EMOJI.test(t)),
     noDidYouKnow: !/did you know/i.test(all),
   };
@@ -71,7 +73,7 @@ export interface RuleCheck {
 
 export function checkRules(
   post: NonNullable<ScoreInput["post"]>,
-  opts: { banned: string[]; platforms: string[]; limits: ScoreInput["limits"]; facts?: string }
+  opts: { banned: string[]; platforms: string[]; limits: ScoreInput["limits"]; facts?: string; hashtags?: ScoreInput["hashtags"] }
 ): RuleCheck {
   const { passed, failures } = scorePost({ post, ...opts });
   return { passed, failures };

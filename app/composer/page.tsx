@@ -9,13 +9,14 @@ import { useStore } from "@/lib/store";
 import { Button, Input, Textarea, Card, Chip, SectionLabel, PageHeader, EmptyState } from "@/components/ui";
 import PlatformPreview from "@/components/composer/PlatformPreview";
 import { Scorecard } from "@/components/composer/Scorecard";
+import { ScoreBadge } from "@/components/composer/ScoreBadge";
 import IdeaCards from "@/components/composer/IdeaCards";
 import PhoneFrame from "@/components/composer/PhoneFrame";
 import { EditSection } from "@/components/composer/EditPanel";
 import type { PostIdea } from "@/lib/content/ideas";
 import Link from "next/link";
 import type { GeneratedPost, Platform, ProductRef, RenderedMedia, TemplateCategory, ScheduledPost } from "@/lib/types";
-import { chunkProducts, MAX_CAROUSEL_PRODUCTS } from "@/lib/content/brief";
+import { chunkProducts, layoutNeedsPhoto, MAX_CAROUSEL_PRODUCTS } from "@/lib/content/brief";
 import type { LayoutId } from "@/lib/brand/model";
 import { LAYOUT_LABELS, layoutKitOf } from "@/lib/render/kit";
 import { CONTENT_TEMPLATES, PLATFORM_LABELS } from "@/lib/templates";
@@ -37,6 +38,7 @@ export default function ComposerPage() {
   const [topic, setTopic] = useState("");
   const [tone, setTone] = useState("Brand default");
   const [additionalContext, setAdditionalContext] = useState("");
+  const [baseProduct, setBaseProduct] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [post, setPost] = useState<GeneratedPost | null>(null);
   const [generationId, setGenerationId] = useState<string | null>(null);
@@ -230,7 +232,7 @@ export default function ComposerPage() {
   const thumbKey = productPhotos.map((p) => p.path).join("|");
   const brandId = brand?.model?.id;
   useEffect(() => {
-    if (!carouselOn || !brandId) return;
+    if (!(carouselOn || productPhotos.length) || !brandId) return;
     const missing = productPhotos.filter((p) => !thumbs[p.path]);
     if (!missing.length) return;
     const q = missing.map((p) => `path=${encodeURIComponent(p.path)}`).join("&");
@@ -240,6 +242,7 @@ export default function ComposerPage() {
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carouselOn, thumbKey, brandId]);
+  const baseRef = !carouselOn ? productPhotos.find((p) => p.path === baseProduct) : undefined;
 
   const togglePicked = (path: string) => {
     setBatch(0);
@@ -286,8 +289,9 @@ export default function ComposerPage() {
         topic: over?.topic ?? topic,
         platforms: selectedPlatforms,
         tone: tone === "Brand default" ? undefined : tone,
-        additionalContext,
+        additionalContext: [additionalContext, baseRef ? `This post is about the product "${baseRef.product?.name || "Product"}"${baseRef.product?.note ? ` (${baseRef.product.note})` : ""}. Use only facts given here.` : ""].filter(Boolean).join(" "),
         ...(products.length ? { products } : {}),
+        ...(baseRef ? { single: true } : {}),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -296,7 +300,9 @@ export default function ComposerPage() {
     setGenerationId(data.generationId ?? null);
     if (!data.post) setGenError(data.error ?? "Couldn't write a post. Please try again.");
     setGenerating(false);
-    if (data.post) renderPreview(data.post, { photo: "auto" });
+    if (data.post) renderPreview(data.post, baseRef
+      ? { photo: { kind: "brand", ref: baseRef.path }, ...(layoutNeedsPhoto(data.post.layout) ? {} : { layout: (layoutKitOf(brand.model)?.layouts.find((l: LayoutId) => layoutNeedsPhoto(l) && l !== "carousel-cover" && l !== "product-cover") ?? "photo-band") as LayoutId }) }
+      : { photo: "auto" });
   };
 
   const nextCarousel = () => {
@@ -410,6 +416,23 @@ export default function ComposerPage() {
 
       <Textarea label="Additional Context" placeholder="Any specific details, promotions, or angles to include…" value={additionalContext} onChange={(e) => setAdditionalContext(e.target.value)} rows={3} />
 
+      {productPhotos.length >= 1 && !carouselOn && (
+        <div className="space-y-2">
+          <SectionLabel>Base it on a product (optional)</SectionLabel>
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+            {productPhotos.map((p) => {
+              const on = baseProduct === p.path;
+              return (
+                <button key={p.path} aria-pressed={on} onClick={() => setBaseProduct(on ? null : p.path)} title={p.product?.name} className={`relative aspect-square rounded-lg overflow-hidden border-2 ${on ? "border-accent" : "border-transparent opacity-70 hover:opacity-100"}`}>
+                  {thumbs[p.path] && <img src={thumbs[p.path]} alt={p.product?.name ?? "Product"} className="w-full h-full object-cover" />}
+                </button>
+              );
+            })}
+          </div>
+          {baseRef && <p className="text-xs text-text-muted">Writing about {baseRef.product?.name || "this product"} and using its photo.</p>}
+        </div>
+      )}
+
       {productPhotos.length >= 2 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -512,6 +535,7 @@ export default function ComposerPage() {
                       <PlatformPreview post={post} platforms={selectedPlatforms} brandDNA={brand.dna} igHandle={brand.sources.instagram || brand.name} images={rendered?.urls ?? []} imageLoading={rendering} />
                     </PhoneFrame>
                     {renderError && <p className="text-xs text-error text-center">{renderError}</p>}
+                    {brand.model && <ScoreBadge post={post} model={brand.model} />}
                     <div className="flex gap-2 justify-center flex-wrap">
                       <Button variant="secondary" onClick={() => generate()}>Regenerate</Button>
                       {isProductPost && batch + 1 < batches.length && (

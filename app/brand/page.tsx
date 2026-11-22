@@ -14,6 +14,7 @@ import { LayoutKitEditor } from "@/components/brand/LayoutKitEditor";
 import { PhotoGrid } from "@/components/brand/BrandPhotos";
 import { LogoUpload } from "@/components/brand/LogoUpload";
 import { ChannelsSection } from "@/components/brand/ChannelsSection";
+import { InstagramSection } from "@/components/brand/InstagramSection";
 import { useStore } from "@/lib/store";
 import { fromBrandDNA } from "@/lib/brand/projection";
 import { profileCompleteness } from "@/lib/brand/completeness";
@@ -23,6 +24,7 @@ import { AFFLUENCE_OPTIONS, AGE_LABELS, complianceFor, GENDER_OPTIONS, LANGUAGE_
 import { checkPalette, contrastRatio, normalizeHex, readableOn, wcagLevel } from "@/lib/brand/color";
 import { FONT_CHOICES } from "@/lib/brand/fonts";
 import { loadGoogleFonts } from "@/lib/brand/client";
+import { hasQueuedInstagramLearning } from "@/lib/social/autolearn";
 import { ListEditor, NEEDS_CHECK, ScaleSlider as ToneSlider, Section } from "@/components/brand/editors";
 import { AudienceMoreSection, ContentMoreSection, IdentitySection, LookSection, PersonalitySection, PositioningSection, WordsSection } from "@/components/brand/KnowledgeSections";
 
@@ -42,6 +44,12 @@ function BrandProfile() {
     setTab(TAB_OF_SECTION[s] ?? "about");
     setTimeout(() => document.getElementById(`section-${s}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   };
+
+  // Onboarding queued an Instagram read: open Voice, where it runs and shows progress.
+  const brandId = brand?.id;
+  useEffect(() => {
+    if (brandId && hasQueuedInstagramLearning(brandId)) setTab("voice");
+  }, [brandId]);
 
   useEffect(() => {
     if (model) loadGoogleFonts([model.expression.tokens.font.heading.$value, model.expression.tokens.font.body.$value]);
@@ -350,6 +358,15 @@ function BrandProfile() {
           )}
 
           {tab === "voice" && (
+            <InstagramSection
+              model={model}
+              sources={brand.sources}
+              onModel={(m) => saveBrandModel(m, brand.sources, { source: "stage", stageId: "pipeline:social" })}
+              onSources={(s) => saveBrandModel(model, s)}
+            />
+          )}
+
+          {tab === "voice" && (
           <Section id="voice" title="Voice" description="Move the sliders and watch the sample line change" model={model} onLock={lock}>
             <div className="grid sm:grid-cols-2 gap-x-8 gap-y-5">
               <ToneSlider left="Funny" right="Serious" value={model.voice.tone.funny_serious} onChange={(v) => setTone("funny_serious", v)} />
@@ -493,6 +510,7 @@ function BrandProfile() {
           <p className="text-xs text-text-muted">Preview</p>
           <BrandPostPreview
             name={model.name}
+            handle={brand.sources.instagram}
             headline={model.identity.oneLiner || model.name}
             caption={model.voice.sampleLines[0] ?? model.identity.oneLiner}
             palette={palette}

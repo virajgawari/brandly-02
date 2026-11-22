@@ -6,7 +6,9 @@ const TEMPLATE_IDS = CONTENT_TEMPLATES.map((t) => t.id) as [string, ...string[]]
 
 export const CAMPAIGN_RATIOS = ["4:5", "1:1", "9:16"] as const;
 export type CampaignRatio = (typeof CAMPAIGN_RATIOS)[number];
+/** Default post count when the request names none; CAMPAIGN_MAX is the hard cap. */
 export const CAMPAIGN_POSTS = 4;
+export const CAMPAIGN_MAX = 8;
 
 export const CampaignPostSchema = z.object({
   title: z.string().min(3).max(80),
@@ -20,18 +22,26 @@ export const CampaignBriefSchema = z.object({
   offer: z.string().max(140).default(""),
   product: z.string().max(80).default(""),
   ratio: z.enum(CAMPAIGN_RATIOS).default("4:5"),
-  posts: z.array(CampaignPostSchema).min(1).max(8),
+  posts: z.array(CampaignPostSchema).min(1).max(CAMPAIGN_MAX),
 });
 export type CampaignBrief = z.infer<typeof CampaignBriefSchema>;
 export type CampaignPost = z.infer<typeof CampaignPostSchema>;
 
-export const CAMPAIGN_PROMPT_VERSION = "campaign@2";
+export const CAMPAIGN_PROMPT_VERSION = "campaign@3";
 
 export const CAMPAIGN_SYSTEM = `You plan a short social media campaign for one brand from the owner's one-line request.
-Reply with a brief: "goal" (what the campaign should achieve), "offer" (only if the request states one, else ""), "product" (the product or service it centres on, else ""), "ratio" (one of ${CAMPAIGN_RATIOS.join(", ")}; use "9:16" for stories or reels, else "4:5"), and exactly ${CAMPAIGN_POSTS} "posts".
-The posts must differ in angle and template and build on each other (tease, reveal, proof, last call). Use only facts you are given; never invent prices, discounts, dates, events, people or customer quotes. Do not plan a post that needs a testimonial or a number you were not given.
+Reply with a brief: "goal" (what the campaign should achieve), "offer" (only if the request states one, else ""), "product" (the product or service it centres on, else ""), "ratio" (one of ${CAMPAIGN_RATIOS.join(", ")}; use "9:16" for stories or reels, else "4:5"), and "posts": the number the request asks for, otherwise ${CAMPAIGN_POSTS} (never more than ${CAMPAIGN_MAX}).
+The posts must differ in angle and template. Only make them build on each other (a sequence) when the request is a launch or countdown. When "Feed" lines are given, favour the kinds of posts and topics the brand's own Instagram uses. Use only facts you are given; never invent prices, discounts, dates, events, people or customer quotes. Do not plan a post that needs a testimonial or a number you were not given.
 "title" is 3 to 8 words, "pitch" is one plain sentence. "template" must be one of: ${TEMPLATE_IDS.join(", ")}.
 Reply as {"goal":"","offer":"","product":"","ratio":"4:5","posts":[{"title":"","pitch":"","template":""}]}.`;
+
+function feedLines(model: BrandModel): string {
+  const pb = model.voice?.playbook;
+  if (!pb) return "";
+  const pillars = (pb.pillars ?? []).slice(0, 5).map((p) => p.name).filter(Boolean);
+  const mix = (pb.formatMix ?? []).slice(0, 4).map((m) => `${m.format} ${m.pct}%`);
+  return [pillars.length && `Feed pillars: ${pillars.join("; ")}`, mix.length && `Feed post types: ${mix.join(", ")}`].filter(Boolean).join("; ");
+}
 
 export function buildCampaignPrompt(model: BrandModel, request: string): string {
   const s = model.strategy;
@@ -40,6 +50,7 @@ export function buildCampaignPrompt(model: BrandModel, request: string): string 
     s.industry && `Industry: ${s.industry}`,
     s.offering && `Sells: ${s.offering}`,
     model.content?.pillars?.length && `Content pillars: ${model.content.pillars.join("; ")}`,
+    feedLines(model),
     `Request: ${request.trim().slice(0, 400)}`,
   ].filter(Boolean);
   return lines.join("\n");
@@ -56,7 +67,7 @@ export function cleanCampaignBrief(b: CampaignBrief): CampaignBrief {
       seen.add(k);
       return true;
     })
-    .slice(0, CAMPAIGN_POSTS);
+    .slice(0, CAMPAIGN_MAX);
   return { ...b, goal: b.goal.trim(), offer: b.offer.trim(), product: b.product.trim(), posts };
 }
 

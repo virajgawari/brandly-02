@@ -164,7 +164,7 @@ export function contentImages(html: string, abs: (href?: string) => string | und
 }
 
 export async function fetchWebsiteEvidence(rawUrl: string): Promise<WebsiteEvidence> {
-  const page = await fetchCapped(rawUrl, MAX_HTML_BYTES, 20_000);
+  const page = await fetchCapped(rawUrl, MAX_HTML_BYTES, 12_000);
   if (!page) throw new Error("The website didn't respond. Check the link and try again.");
   const { text: html, finalUrl } = page;
   const base = new URL(finalUrl);

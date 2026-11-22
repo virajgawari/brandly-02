@@ -129,6 +129,11 @@ function SettingsForm({ account }: { account: Account }) {
   const [prefs, setPrefs] = useState({ weekly: account?.workspace.email_prefs?.weekly ?? true, product: account?.workspace.email_prefs?.product ?? false });
 
   const [timezone, setTimezone] = useState(account?.workspace.timezone ?? "UTC");
+  // The workspace timezone can change after this form mounts (browser auto-detect), so follow it.
+  const savedTimezone = account?.workspace.timezone;
+  useEffect(() => {
+    if (savedTimezone) setTimezone(savedTimezone);
+  }, [savedTimezone]);
   const zones = (() => {
     const all = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
     return all.includes(timezone) ? all : [timezone, ...all];

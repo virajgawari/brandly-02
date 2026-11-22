@@ -5,7 +5,7 @@ import type { ContentHistory } from "@/lib/content/history";
 import { llmScope } from "@/lib/db/llm-scope";
 import { n8nEnabled, n8nRequest } from "@/lib/n8n";
 import type { GeneratedPost, RenderedMedia } from "@/lib/types";
-import { imageFromStorage, imageFromUrl, imageTone } from "./assets";
+import { imageFromStorage, imageFromUrl, imageTone, logoHasWhiteBox } from "./assets";
 import { layoutKitOf } from "./kit";
 import { museEnabled, museImage, type MuseAspect } from "./muse";
 import { topStylePaths } from "@/lib/social/store";
@@ -151,7 +151,7 @@ export async function loadVisuals(session: Session | null, model: BrandModel, ph
       ? imageFromStorage(session.db, "logos", model.expression.logoPath, { maxSide: 512, keepAlpha: true })
       : imageFromUrl(model.expression.logoUrl, { maxSide: 512, keepAlpha: true }),
   ]);
-  return { photo: photoUri, logo: logoUri, logoTone: await imageTone(logoUri) };
+  return { photo: photoUri, logo: logoUri, logoTone: await imageTone(logoUri), logoBoxed: await logoHasWhiteBox(logoUri) };
 }
 
 /** Product photos (images bucket) as data URIs, in order; missing ones come back undefined. */
@@ -167,6 +167,8 @@ const SIGN_SECONDS =60 * 60 * 24 * 30;
 export interface EncodedImage {
   buf: Buffer;
   mime: "image/png" | "image/jpeg";
+  /** Provenance stored on the media asset so the publisher can pass platform AI self-disclosure flags. */
+  provenance?: { sourceType: "uploaded" | "synthetic" | "product_composite"; c2paSigned: boolean };
 }
 
 /** PNG from Satori → JPEG (much smaller, accepted by every network). Keeps PNG if sharp is missing. */
@@ -180,9 +182,9 @@ export async function encodeForUpload(png: Buffer, quality = 90): Promise<Encode
 }
 
 /** Saves an AI-generated JPEG to the images bucket (generated/ folder) and signs it. */
-export async function storeImage(s: Session, brandId: string, buf: Buffer): Promise<{ paths: string[]; urls: string[] }> {
+export async function storeImage(s: Session, brandId: string, buf: Buffer, provenance: EncodedImage["provenance"] = { sourceType: "synthetic", c2paSigned: false }): Promise<{ paths: string[]; urls: string[] }> {
   const path = `${s.workspaceId}/brands/${brandId}/generated/${crypto.randomUUID()}.jpg`;
-  return uploadImages(s, brandId, [path], [{ buf, mime: "image/jpeg" }]);
+  return uploadImages(s, brandId, [path], [{ buf, mime: "image/jpeg", provenance }]);
 }
 
 /** Uploads rendered images to the images bucket and records them as media assets. */
@@ -207,13 +209,16 @@ async function uploadImages(s: Session, brandId: string, paths: string[], images
       mime: img.mime,
       bytes: img.buf.byteLength,
       created_by: s.userId,
+      ...(img.provenance
+        ? { source_type: img.provenance.sourceType, c2pa_signed: img.provenance.c2paSigned, is_ai_generated: img.provenance.sourceType !== "uploaded", has_synthetic_visual: img.provenance.sourceType === "synthetic" }
+        : {}),
     }))
   );
   if (maErr) console.warn("[media_assets]", maErr.message);
   return { paths, urls: await signPaths(s, "images", paths) };
 }
 
-export async function signPaths(s: Session, bucket: string, paths: string[], seconds = SIGN_SECONDS): Promise<string[]> {
+export async function signPaths(s: { db: Pick<Session["db"], "storage"> }, bucket: string, paths: string[], seconds = SIGN_SECONDS): Promise<string[]> {
   if (!paths.length) return [];
   const { data, error } = await s.db.storage.from(bucket).createSignedUrls(paths, seconds);
   if (error || !data) throw new Error(`Couldn't sign image links: ${error?.message}`);

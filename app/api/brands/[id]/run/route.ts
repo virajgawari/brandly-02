@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { PIPELINES, runStages, type PipelineId } from "@/lib/brand/pipelines";
 import { friendlyError } from "@/lib/errors";
 import { emptyModel, type BrandModel, type BrandPhoto } from "@/lib/brand/model";
-import { errorResponse, requireSession } from "@/lib/db/session";
+import { errorResponse } from "@/lib/db/session";
+import { requireAi } from "@/lib/db/budget";
 import { withLlmContext } from "@/lib/llm-log";
 import { attachSourceMedia } from "@/lib/brand/photos";
 import { loadSocialInput } from "@/lib/social/store";
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   let session;
   try {
-    session = await requireSession();
+    session = await requireAi();
   } catch (err) {
     return errorResponse(err, "run auth");
   }

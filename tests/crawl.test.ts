@@ -86,3 +86,20 @@ describe("crawlSite", () => {
     expect(r.pages).toHaveLength(3);
   });
 });
+
+import { robotsSitemaps, selectLinks as selectLinksH1 } from "@/lib/crawl";
+
+describe("sitemap prioritisation", () => {
+  it("reads same-origin Sitemap lines from robots.txt", () => {
+    const txt = "User-agent: *\nSitemap: https://a.com/sm.xml\nSitemap: https://evil.com/x.xml";
+    expect(robotsSitemaps(txt, "https://a.com")).toEqual(["https://a.com/sm.xml"]);
+  });
+
+  it("spends the page budget on high-signal routes, not legal pages", () => {
+    const urls = ["https://a.com/privacy-policy", "https://a.com/terms", "https://a.com/about", "https://a.com/collections/all", "https://a.com/menu"];
+    const picked = selectLinksH1(urls, "https://a.com", 5);
+    expect(picked).not.toContain("https://a.com/privacy-policy");
+    expect(picked).not.toContain("https://a.com/terms");
+    expect(picked[0]).toBe("https://a.com/about");
+  });
+});

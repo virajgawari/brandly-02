@@ -87,6 +87,28 @@ describe("social stage", () => {
     expect(merged.voice.vocabulary.avoid).toContain("elevate");
   });
 
+  it("keeps the learned lettering fields and patches the render font", async () => {
+    analyse.mockResolvedValue(JSON.stringify({ ...style, textColor: "#FFFFFF", fontPairId: "fraunces-inter", textBox: "pill", peoplePct: 40, peopleStyle: "candid" }));
+    structured.mockResolvedValue(playbook);
+    const r = await run({ socialPosts: [post(1, true), post(2), post(3)], socialImages: ["b64"] });
+    const merged = r.patches.reduce((m, p) => mergePatch(m, p.patch, p.options).model, emptyModel("Acme", "analyse", "b1"));
+    const g = merged.expression.styleGuide;
+    expect(g?.textColor).toBe("#FFFFFF");
+    expect(g?.textBox).toBe("pill");
+    expect(g?.peoplePct).toBe(40);
+    expect(merged.expression.tokens.font.heading.$value).toBe("Fraunces");
+  });
+
+  it("drops an unknown fontPairId without touching the font", async () => {
+    analyse.mockResolvedValue(JSON.stringify({ ...style, fontPairId: "comic-sans" }));
+    structured.mockResolvedValue(playbook);
+    const base = emptyModel("Acme", "analyse", "b1");
+    const r = await run({ socialPosts: [post(1, true), post(2), post(3)], socialImages: ["b64"] });
+    const merged = r.patches.reduce((m, p) => mergePatch(m, p.patch, p.options).model, base);
+    expect(merged.expression.styleGuide?.fontPairId).toBeUndefined();
+    expect(merged.expression.tokens.font.heading.$value).toBe(base.expression.tokens.font.heading.$value);
+  });
+
   it("still writes the playbook when the vision call fails", async () => {
     analyse.mockRejectedValue(new Error("busy"));
     structured.mockResolvedValue(playbook);

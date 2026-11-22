@@ -67,6 +67,13 @@ export default function ComposerPage() {
   const [scene, setScene] = useState<string>("");
   const [sceneText, setSceneText] = useState("");
   const [optionsOpen, setOptionsOpen] = useState(false);
+  // Conversational patching: one-step undo keeps the draft from before the last patch.
+  const [patchText, setPatchText] = useState("");
+  const [patching, setPatching] = useState(false);
+  const [patchNote, setPatchNote] = useState<string | null>(null);
+  const [patchError, setPatchError] = useState<string | null>(null);
+  const [undoPost, setUndoPost] = useState<GeneratedPost | null>(null);
+  const [placing, setPlacing] = useState(false);
   const renderSeq = useRef(0);
   const textTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(textTimer.current), []);
@@ -146,6 +153,67 @@ export default function ComposerPage() {
     setPost(next);
     clearTimeout(textTimer.current);
     textTimer.current = setTimeout(() => renderPreview(next, { photo: currentPhoto() }), 600);
+  };
+
+  const applyPatch = async (instruction: string) => {
+    if (!post || !instruction.trim() || patching) return;
+    setPatching(true);
+    setPatchError(null);
+    setPatchNote(null);
+    try {
+      const res = await fetch("/api/composer/patch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instruction,
+          platform: selectedPlatforms[0],
+          brandModel: brand?.model,
+          currentDraft: { headline: post.headline ?? "", supportingLine: post.subline ?? "", caption: post.caption, hashtags: post.hashtags, cta: post.cta, layoutId: post.layout },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.merged) throw new Error(data.failures?.length ? `${data.error} (${data.failures.join("; ")})` : data.error ?? "Couldn't apply that edit.");
+      const m = data.merged as { headline: string; supportingLine: string; caption: string; hashtags: string[]; cta: string; layoutId?: LayoutId };
+      const next: GeneratedPost = { ...post, headline: m.headline, subline: m.supportingLine, caption: m.caption, hashtags: m.hashtags, cta: m.cta, layout: m.layoutId ?? post.layout, platformVariants: {} };
+      setUndoPost(post);
+      setPost(next);
+      setPatchText("");
+      setPatchNote(data.changeSummary || "Edit applied.");
+      renderPreview(next, { layout: next.layout, photo: currentPhoto() });
+    } catch (e) {
+      setPatchError(e instanceof Error ? e.message : "Couldn't apply that edit.");
+    } finally {
+      setPatching(false);
+    }
+  };
+
+  const undoPatch = () => {
+    if (!undoPost) return;
+    setPost(undoPost);
+    renderPreview(undoPost, { layout: undoPost.layout, photo: currentPhoto() });
+    setUndoPost(null);
+    setPatchNote(null);
+  };
+
+  /** Catalogue product: put the real product photo into an on-brand scene, then use it as this post's photo. */
+  const placeInScene = async () => {
+    if (!post || !catalogProductId || placing) return;
+    setPlacing(true);
+    setRenderError(null);
+    try {
+      const res = await fetch(`/api/products/${catalogProductId}/scene`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brandModel: brand?.model, scene, sceneText, aspect: size === "1080x1080" ? "1:1" : size === "1080x1920" ? "9:16" : "4:5" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) throw new Error(data.error ?? "Couldn't place the product in a scene.");
+      renderPreview(post, { photo: { kind: "generated", ref: data.url } });
+    } catch (e) {
+      setRenderError(e instanceof Error ? e.message : "Couldn't place the product in a scene.");
+    } finally {
+      setPlacing(false);
+    }
   };
 
   const restore = (i: number) => {
@@ -279,6 +347,8 @@ export default function ComposerPage() {
     setSaved(false);
     setRendered(null);
     setRenderError(null);
+    let data: { post?: GeneratedPost; generationId?: string; error?: string } = {};
+    try {
     const res = await fetch("/api/generate-post", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -294,14 +364,17 @@ export default function ComposerPage() {
         ...(baseRef ? { single: true } : {}),
       }),
     });
-    const data = await res.json().catch(() => ({}));
+    data = await res.json().catch(() => ({}));
+    } catch (err) {
+      data = { error: err instanceof Error ? err.message : "Network problem. Please try again." };
+    }
     if (data.post && previous) data.post = { ...data.post, versions: pushVersion(previous) };
     setPost(data.post ?? null);
     setGenerationId(data.generationId ?? null);
     if (!data.post) setGenError(data.error ?? "Couldn't write a post. Please try again.");
     setGenerating(false);
     if (data.post) renderPreview(data.post, baseRef
-      ? { photo: { kind: "brand", ref: baseRef.path }, ...(layoutNeedsPhoto(data.post.layout) ? {} : { layout: (layoutKitOf(brand.model)?.layouts.find((l: LayoutId) => layoutNeedsPhoto(l) && l !== "carousel-cover" && l !== "product-cover") ?? "photo-band") as LayoutId }) }
+      ? { photo: { kind: "brand", ref: baseRef.path }, ...(layoutNeedsPhoto(data.post.layout as LayoutId) ? {} : { layout: (layoutKitOf(brand.model)?.layouts.find((l: LayoutId) => layoutNeedsPhoto(l) && l !== "carousel-cover" && l !== "product-cover") ?? "photo-band") as LayoutId }) }
       : { photo: "auto" });
   };
 
@@ -313,6 +386,10 @@ export default function ComposerPage() {
 
   const schedulePost = async (status: "draft" | "scheduled") => {
     if (!post || !brand) return;
+    if (status === "scheduled" && !(new Date(scheduleDate).getTime() > Date.now())) {
+      setGenError("Pick a time in the future to schedule.");
+      return;
+    }
     const id = crypto.randomUUID();
     setSaving(true);
     let content: GeneratedPost = { ...post, rendered: undefined };
@@ -536,6 +613,21 @@ export default function ComposerPage() {
                     </PhoneFrame>
                     {renderError && <p className="text-xs text-error text-center">{renderError}</p>}
                     {brand.model && <ScoreBadge post={post} model={brand.model} />}
+                    <div className="max-w-[380px] mx-auto space-y-2" aria-label="Quick edits">
+                      <div className="flex gap-2 flex-wrap justify-center">
+                        {["Shorter", "Punchier hook", "More casual"].map((c) => (
+                          <button key={c} disabled={patching} onClick={() => applyPatch(c === "Shorter" ? "Make it shorter" : c === "Punchier hook" ? "Make the hook punchier" : "Make the tone more casual")} className="px-2.5 py-1 rounded-lg border border-border text-xs text-text-muted hover:text-text hover:border-accent/30 disabled:opacity-50">{c}</button>
+                        ))}
+                        {undoPost && <button onClick={undoPatch} className="px-2.5 py-1 rounded-lg border border-border text-xs text-text-muted hover:text-text">Undo patch</button>}
+                      </div>
+                      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); applyPatch(patchText); }}>
+                        <input value={patchText} onChange={(e) => setPatchText(e.target.value)} maxLength={300} placeholder="Tell it what to change, e.g. warmer tone" aria-label="Edit instruction" className="flex-1 min-w-0 px-3 py-1.5 rounded-lg border border-border bg-transparent text-xs" />
+                        <Button size="sm" variant="secondary" type="submit" disabled={patching || !patchText.trim()}>{patching ? "Editing…" : "Apply"}</Button>
+                      </form>
+                      {patchNote && <p className="text-xs text-text-muted text-center">{patchNote}</p>}
+                      {patchError && <p className="text-xs text-error text-center">{patchError}</p>}
+                      {catalogProductId && <Button size="sm" variant="secondary" className="w-full" disabled={placing || rendering} onClick={placeInScene}>{placing ? "Placing product…" : "Place in scene"}</Button>}
+                    </div>
                     <div className="flex gap-2 justify-center flex-wrap">
                       <Button variant="secondary" onClick={() => generate()}>Regenerate</Button>
                       {isProductPost && batch + 1 < batches.length && (
@@ -663,17 +755,22 @@ export default function ComposerPage() {
                   </EditSection>
 
                   <EditSection title="Caption and hashtags">
-                    <Textarea label="Caption" value={post.caption} rows={6} onChange={(e) => setPost({ ...post, caption: e.target.value })} />
-                    <div className="flex flex-wrap gap-1.5">
-                      {post.hashtags.map((h) => (
-                        <Chip key={h} variant="neutral" className="text-[11px]">{h}</Chip>
-                      ))}
-                    </div>
+                    <Textarea label="Caption" value={post.caption} rows={6} onChange={(e) => setPost({ ...post, caption: e.target.value, platformVariants: {} })} />
+                    <Input
+                      key={post.hashtags.join(" ")}
+                      label="Hashtags"
+                      defaultValue={post.hashtags.join(" ")}
+                      onBlur={(e) => setPost({ ...post, hashtags: e.target.value.split(/\s+/).filter(Boolean).map((h) => (h.startsWith("#") ? h : `#${h}`)) })}
+                    />
                     {selectedPlatforms.length > 1 &&
                       selectedPlatforms.map((p) => (
                         <div key={p}>
                           <p className="text-xs font-semibold text-text-muted mb-1">{PLATFORM_LABELS[p]}</p>
-                          <p className="text-xs leading-relaxed bg-surface p-3 rounded-xl">{post.platformVariants?.[p] ?? post.caption}</p>
+                          <Textarea
+                            rows={3}
+                            value={post.platformVariants?.[p] ?? post.caption}
+                            onChange={(e) => setPost({ ...post, platformVariants: { ...post.platformVariants, [p]: e.target.value } })}
+                          />
                         </div>
                       ))}
                     <div className="text-xs space-y-1">
@@ -717,6 +814,12 @@ export default function ComposerPage() {
                         className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text focus:outline-none focus:border-accent"
                       />
                     </div>
+                    {saved && (
+                      <div className="flex gap-2 items-center">
+                        <Link href="/calendar"><Button size="sm">View in calendar</Button></Link>
+                        <Button size="sm" variant="secondary" onClick={() => { setPost(null); setSaved(false); setRendered(null); }}>Make another</Button>
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       {rendered?.urls?.[0] && <Button variant="ghost" onClick={() => downloadImage(rendered.urls[0], "brandly-post.png")}>Download</Button>}
                       <Button variant="ghost" onClick={() => schedulePost("draft")} disabled={saved || saving}>Save Draft</Button>

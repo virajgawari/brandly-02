@@ -1,14 +1,17 @@
 import type { Platform, ScheduledPost } from "@/lib/types";
+import { adminClient } from "@/lib/supabase/admin";
 
 // Publishes Brandly posts through a Postiz instance (self-hosted or cloud).
 // Social accounts are connected inside Postiz ("channels"); Brandly only needs an API key.
 //
 //   POSTIZ_API_URL   e.g. http://localhost:4007/api/public/v1  (cloud: https://api.postiz.com/public/v1)
-//   POSTIZ_API_KEY   Postiz → Settings → Developers → Public API key
+//   POSTIZ_API_KEY   Postiz → Settings → Developers → Public API key. Belongs to ONE workspace (POSTIZ_WORKSPACE_ID);
+//                    every other workspace stores its own key in workspace_secrets (Settings → Publishing).
+//                    Outside production, an unset POSTIZ_WORKSPACE_ID lets any workspace use it (local dev).
 //   POSTIZ_ALSO_POST_TO  optional, comma-separated Postiz identifiers (e.g. "bluesky") that receive
 //                        every post too. Meant for testing with platforms that need no developer app.
 
-export type PublishResult = { platform: string; ok: boolean; id?: string | null; error?: string };
+export type PublishResult = { platform: string; /** Set when the result belongs to one of the post's own platforms. */ channel?: Platform; ok: boolean; id?: string | null; error?: string };
 
 type Integration = { id: string; name: string; identifier: string; disabled?: boolean };
 
@@ -29,16 +32,23 @@ function settingsFor(identifier: string): Record<string, unknown> {
 
 const LIMITS: Record<string, number> = { x: 280, bluesky: 300, threads: 500, mastodon: 500 };
 
-export function postizEnabled(): boolean {
-  return Boolean(process.env.POSTIZ_API_URL && process.env.POSTIZ_API_KEY);
+/** The Postiz API key this workspace may publish with, or null. Never falls back to another workspace's key. */
+export async function postizKeyFor(workspaceId: string): Promise<string | null> {
+  if (!process.env.POSTIZ_API_URL) return null;
+  const { data } = (await adminClient()?.from("workspace_secrets").select("postiz_api_key").eq("workspace_id", workspaceId).maybeSingle()) ?? {};
+  if (data?.postiz_api_key) return data.postiz_api_key as string;
+  const env = process.env.POSTIZ_API_KEY;
+  if (!env) return null;
+  const owner = process.env.POSTIZ_WORKSPACE_ID;
+  return owner ? (owner === workspaceId ? env : null) : process.env.NODE_ENV === "production" ? null : env;
 }
 
-async function postiz<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function postiz<T>(key: string, path: string, init: RequestInit = {}): Promise<T> {
   const base = process.env.POSTIZ_API_URL!.replace(/\/+$/, "");
   const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
-      Authorization: process.env.POSTIZ_API_KEY!,
+      Authorization: key,
       "Content-Type": "application/json",
       ...init.headers,
     },
@@ -59,8 +69,8 @@ async function postiz<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-export function listChannels(): Promise<Integration[]> {
-  return postiz<Integration[]>("/integrations");
+export function listChannels(key: string): Promise<Integration[]> {
+  return postiz<Integration[]>(key, "/integrations");
 }
 
 function captionFor(post: ScheduledPost, platform: Platform | null, identifier: string): string {
@@ -72,22 +82,26 @@ function captionFor(post: ScheduledPost, platform: Platform | null, identifier: 
   return text;
 }
 
+/** Publishes now to `platforms` only (callers pass just the ones not yet published). */
 export async function publishWithPostiz(opts: {
+  key: string;
   post: ScheduledPost;
+  platforms: Platform[];
   mediaUrls?: string[];
-  publishAt?: string;
-}): Promise<{ status: "published" | "scheduled" | "partial" | "failed"; results: PublishResult[] }> {
-  const { post } = opts;
-  const channels = (await listChannels()).filter((c) => !c.disabled);
+  /** Also post to POSTIZ_ALSO_POST_TO test channels (first publish only). */
+  includeExtra?: boolean;
+}): Promise<{ status: "published" | "partial" | "failed"; results: PublishResult[] }> {
+  const { post, key } = opts;
+  const channels = (await listChannels(key)).filter((c) => !c.disabled);
   const results: PublishResult[] = [];
   const targets: { label: string; platform: Platform | null; channel: Integration }[] = [];
 
-  for (const p of post.platforms ?? []) {
+  for (const p of opts.platforms) {
     const matches = channels.filter((c) => IDENTIFIERS[p]?.includes(c.identifier));
-    if (!matches.length) results.push({ platform: p, ok: false, error: "No connected channel in Postiz" });
+    if (!matches.length) results.push({ platform: p, channel: p, ok: false, error: "No connected channel in Postiz" });
     for (const channel of matches) targets.push({ label: `${p} (${channel.name})`, platform: p, channel });
   }
-  const extra = (process.env.POSTIZ_ALSO_POST_TO ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const extra = (opts.includeExtra ? process.env.POSTIZ_ALSO_POST_TO ?? "" : "").split(",").map((s) => s.trim()).filter(Boolean);
   for (const id of extra) {
     const matches = channels.filter((c) => c.identifier === id);
     if (!matches.length) results.push({ platform: id, ok: false, error: "No connected channel in Postiz" });
@@ -101,7 +115,7 @@ export async function publishWithPostiz(opts: {
   const images: { id: string; path: string }[] = [];
   for (const url of urls) {
     try {
-      const up = await postiz<{ id: string; path: string }>("/upload-from-url", {
+      const up = await postiz<{ id: string; path: string }>(key, "/upload-from-url", {
         method: "POST",
         body: JSON.stringify({ url }),
       });
@@ -111,21 +125,18 @@ export async function publishWithPostiz(opts: {
     }
   }
 
-  const when = opts.publishAt ? new Date(opts.publishAt) : null;
-  const scheduled = Boolean(when && !isNaN(when.getTime()) && when.getTime() > Date.now() + 60_000);
-
   // One request per channel, so one bad channel doesn't fail the rest.
   for (const t of targets) {
     if (t.channel.identifier.startsWith("instagram") && !images.length) {
-      results.push({ platform: t.label, ok: false, error: "Instagram needs an image (mediaUrl)" });
+      results.push({ platform: t.label, channel: t.platform ?? undefined, ok: false, error: "Instagram needs an image (mediaUrl)" });
       continue;
     }
     try {
-      const res = await postiz<unknown>("/posts", {
+      const res = await postiz<unknown>(key, "/posts", {
         method: "POST",
         body: JSON.stringify({
-          type: scheduled ? "schedule" : "now",
-          date: (scheduled ? when! : new Date()).toISOString(),
+          type: "now",
+          date: new Date().toISOString(),
           shortLink: false,
           tags: [],
           posts: [
@@ -138,14 +149,13 @@ export async function publishWithPostiz(opts: {
         }),
       });
       const first = Array.isArray(res) ? (res[0] as { postId?: string }) : undefined;
-      results.push({ platform: t.label, ok: true, id: first?.postId ?? null });
+      results.push({ platform: t.label, channel: t.platform ?? undefined, ok: true, id: first?.postId ?? null });
     } catch (err) {
-      results.push({ platform: t.label, ok: false, error: err instanceof Error ? err.message : String(err) });
+      results.push({ platform: t.label, channel: t.platform ?? undefined, ok: false, error: err instanceof Error ? err.message : String(err) });
     }
   }
 
   const okCount = results.filter((r) => r.ok).length;
-  const status =
-    okCount === 0 ? "failed" : okCount < results.length ? "partial" : scheduled ? "scheduled" : "published";
+  const status = okCount === 0 ? "failed" : okCount < results.length ? "partial" : "published";
   return { status, results };
 }

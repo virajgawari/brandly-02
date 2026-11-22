@@ -5,7 +5,15 @@ import type { BrandModel } from "@/lib/brand/model";
 import { paletteToWords } from "@/lib/brand/color";
 import type { BrandDNA, VisualBrief } from "@/lib/types";
 
-export function imagePromptFromBrief(brief: VisualBrief | undefined, model?: BrandModel, dna?: BrandDNA, fallback = ""): string {
+/** Whether this brand's feed shows people, and how; chosen by chance in line with the share seen in its posts. */
+export function peopleClause(guide: BrandModel["expression"]["styleGuide"] | undefined, rand: () => number = Math.random): string {
+  const pct = guide?.peoplePct;
+  if (pct === undefined) return "";
+  if (rand() * 100 < pct) return `Include a person, in the brand's usual style: ${guide?.peopleStyle || "candid and natural"}. Natural-looking, not a stock-photo smile.`;
+  return pct < 20 ? "No people in the frame." : "";
+}
+
+export function imagePromptFromBrief(brief: VisualBrief | undefined, model?: BrandModel, dna?: BrandDNA, fallback = "", rand: () => number = Math.random): string {
   if (!brief || !(brief.subject || brief.setting)) return fallback;
   const c = model?.expression.tokens.color;
   const hexes = c ? [c.primary.$value, c.secondary.$value, c.accent.$value] : dna ? [dna.colors.primary, dna.colors.secondary, dna.colors.accent] : [];
@@ -19,6 +27,7 @@ export function imagePromptFromBrief(brief: VisualBrief | undefined, model?: Bra
       `${brief.composition ? `${brief.composition}. ` : ""}Calm, empty negative space for a headline.`,
       brief.lighting && `${brief.lighting}.`,
       guide.promptSuffix.replace(/\s+$/, ""),
+      peopleClause(guide, rand),
       "No text, letters, logos or watermarks, no clutter.",
     ]
       .filter(Boolean)

@@ -4,7 +4,9 @@ import { cleanIdeas, buildIdeasPrompt, IDEAS_PROMPT_VERSION, IDEAS_SYSTEM, Ideas
 import { recentPosts } from "@/lib/content/history";
 import { learnedBlock } from "@/lib/agent/stats";
 import { llmScope } from "@/lib/db/llm-scope";
-import { errorResponse, requireSession } from "@/lib/db/session";
+import { errorResponse } from "@/lib/db/session";
+import { requireAi } from "@/lib/db/budget";
+import { trustedModel } from "@/lib/db/brands";
 import { adminClient } from "@/lib/supabase/admin";
 import type { BrandModel } from "@/lib/brand/model";
 
@@ -15,9 +17,9 @@ const HOURLY_LIMIT = 20; // one cheap-tier call per click
 /** POST { brandModel } → { ideas: [{ title, pitch, template }] } built from the brand profile and recent posts. */
 export async function POST(req: NextRequest) {
   try {
-    const s = await requireSession();
+    const s = await requireAi();
     const body = (await req.json().catch(() => null)) as { brandModel?: BrandModel } | null;
-    const model = body?.brandModel;
+    const model = await trustedModel(s, body?.brandModel);
     if (!model?.strategy || !model.name) return NextResponse.json({ error: "brandModel is required" }, { status: 400 });
 
     const db = adminClient();

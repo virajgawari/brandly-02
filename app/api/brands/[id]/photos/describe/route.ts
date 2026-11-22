@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse, requireSession } from "@/lib/db/session";
+import { errorResponse } from "@/lib/db/session";
+import { requireAi } from "@/lib/db/budget";
 import { llmScope } from "@/lib/db/llm-scope";
 import { analyseImages, parseJSON } from "@/lib/llm";
 import { imageFromStorage } from "@/lib/render/assets";
@@ -13,7 +14,7 @@ const ownPath = (ws: string, brandId: string, path: string) => path.startsWith(`
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const s = await requireSession();
+    const s = await requireAi();
     const body = (await req.json().catch(() => ({}))) as { paths?: unknown };
     const paths = (Array.isArray(body.paths) ? body.paths : [])
       .filter((p): p is string => typeof p === "string" && ownPath(s.workspaceId, id, p))

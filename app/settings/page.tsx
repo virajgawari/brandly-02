@@ -128,6 +128,12 @@ function SettingsForm({ account }: { account: Account }) {
   const [watermark, setWatermark] = useState(account?.workspace.ai_watermark ?? false);
   const [prefs, setPrefs] = useState({ weekly: account?.workspace.email_prefs?.weekly ?? true, product: account?.workspace.email_prefs?.product ?? false });
 
+  const [timezone, setTimezone] = useState(account?.workspace.timezone ?? "UTC");
+  const zones = (() => {
+    const all = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+    return all.includes(timezone) ? all : [timezone, ...all];
+  })();
+  const [postizKey, setPostizKey] = useState("");
   const canEdit = account.role === "owner" || account.role === "admin";
 
   const flash = (ok: boolean) => setMsg(ok ? "Saved." : "Couldn't save, try again.");
@@ -147,9 +153,22 @@ function SettingsForm({ account }: { account: Account }) {
           <h2 className="font-medium">Profile</h2>
           <Input label="Your name" value={name} onChange={(e) => setName(e.target.value)} />
           <Input label="Workspace name" value={wsName} disabled={!canEdit} onChange={(e) => setWsName(e.target.value)} />
+          <label className="block text-sm">
+            <span className="block mb-1 text-text-muted">Timezone (automations run at your local time)</span>
+            <select
+              className="w-full rounded-lg border border-border bg-transparent px-3 py-2 text-sm"
+              value={timezone}
+              disabled={!canEdit}
+              onChange={(e) => setTimezone(e.target.value)}
+            >
+              {zones.map((z) => (
+                <option key={z} value={z}>{z}</option>
+              ))}
+            </select>
+          </label>
           <Button
             onClick={async () => {
-              const ok = await patch({ fullName: name, ...(canEdit ? { name: wsName } : {}) });
+              const ok = await patch({ fullName: name, ...(canEdit ? { name: wsName, timezone } : {}) });
               if (ok) await hydrate();
               flash(ok);
             }}
@@ -172,6 +191,23 @@ function SettingsForm({ account }: { account: Account }) {
             }}
           />
         </Card>
+
+        {canEdit && (
+          <Card className="p-5 space-y-3">
+            <h2 className="font-medium">Publishing</h2>
+            <p className="text-xs text-text-muted">Paste this workspace&apos;s Postiz API key. It is stored server-side and never shown again; leave blank and save to remove it.</p>
+            <Input label="Postiz API key" type="password" autoComplete="off" value={postizKey} onChange={(e) => setPostizKey(e.target.value)} />
+            <Button
+              onClick={async () => {
+                const ok = await patch({ postizApiKey: postizKey });
+                if (ok) setPostizKey("");
+                flash(ok);
+              }}
+            >
+              Save key
+            </Button>
+          </Card>
+        )}
 
         <Card className="p-5">
           <h2 className="font-medium mb-1">Privacy</h2>

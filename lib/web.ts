@@ -8,12 +8,15 @@ const MAX_CSS_BYTES = 400_000;
 // SSRF guard lives in lib/net/safe-fetch.ts; re-exported for existing importers.
 export { assertPublicUrl };
 
-async function fetchCapped(url: string, maxBytes: number, timeoutMs = 15_000): Promise<{ text: string; finalUrl: string } | null> {
+async function fetchCapped(url: string, maxBytes: number, timeoutMs = 15_000, onStatus?: (status: number) => void): Promise<{ text: string; finalUrl: string } | null> {
   const res = await safeFetch(url, {
     headers: { "User-Agent": UA, Accept: "text/html,text/css,*/*;q=0.8" },
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!res.ok || !res.body) return null;
+  if (!res.ok || !res.body) {
+    onStatus?.(res.status);
+    return null;
+  }
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -27,14 +30,23 @@ async function fetchCapped(url: string, maxBytes: number, timeoutMs = 15_000): P
   return { text: new TextDecoder().decode(Buffer.concat(chunks.map((c) => Buffer.from(c)))), finalUrl: res.url || url };
 }
 
+const NAMED_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“", ndash: "–", mdash: "—", hellip: "…" };
+/** Turns HTML entities (&#39;, &#x27;, &amp;, &rsquo; ...) back into characters, in one pass so "&amp;lt;" stays "&lt;". */
+export const decodeEntities = (s: string) =>
+  s.replace(/&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|([a-z]+));/gi, (m, dec, hex, name) => {
+    if (name) return NAMED_ENTITIES[name.toLowerCase()] ?? m;
+    const cp = dec ? parseInt(dec, 10) : parseInt(hex, 16);
+    return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
+  });
+
 const stripTags = (html: string) =>
-  html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
+  decodeEntities(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+  )
     .replace(/\s+/g, " ")
     .trim();
 
@@ -80,7 +92,10 @@ export interface PageEvidence {
 
 export { fetchCapped };
 
-const attr = (tag: string, name: string) => tag.match(new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, "i"))?.[1]?.replace(/&amp;/g, "&");
+const attr = (tag: string, name: string) => {
+  const v = tag.match(new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, "i"))?.[1];
+  return v === undefined ? undefined : decodeEntities(v);
+};
 
 function metaContent(html: string, key: string): string | undefined {
   for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
@@ -163,9 +178,36 @@ export function contentImages(html: string, abs: (href?: string) => string | und
   return [...new Map(scored.map((x) => [x.url, x])).values()].sort((a, b) => b.score - a.score).map((x) => x.url).slice(0, 20);
 }
 
+/** Latest public Wayback Machine snapshot of a page, for sites that block our crawler (403/429). Returns the raw original HTML. */
+export async function fetchArchivedCopy(rawUrl: string): Promise<{ text: string; finalUrl: string } | null> {
+  const target = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+  const res = await safeFetch(`https://archive.org/wayback/available?url=${encodeURIComponent(target)}`, { signal: AbortSignal.timeout(6_000) });
+  if (!res.ok) return null;
+  const j = (await res.json()) as { archived_snapshots?: { closest?: { available?: boolean; url?: string; timestamp?: string; status?: string } } };
+  const snap = j.archived_snapshots?.closest;
+  // Only a snapshot of a real page: skip archived redirects and error pages.
+  if (!snap?.available || !snap.url || !snap.timestamp || snap.status !== "200") return null;
+  // "id_" asks the archive for the original bytes, without its injected toolbar.
+  const raw = snap.url.replace(/\/web\/(\d+)\//, "/web/$1id_/").replace(/^http:/, "https:");
+  const copy = await fetchCapped(raw, MAX_HTML_BYTES, 6_000);
+  return copy ? { text: copy.text, finalUrl: target } : null;
+}
+
 export async function fetchWebsiteEvidence(rawUrl: string): Promise<WebsiteEvidence> {
-  const page = await fetchCapped(rawUrl, MAX_HTML_BYTES, 12_000);
-  if (!page) throw new Error("The website didn't respond. Check the link and try again.");
+  let status = 0;
+  let page = await fetchCapped(rawUrl, MAX_HTML_BYTES, 12_000, (code) => (status = code));
+  let archived = false;
+  if (!page) {
+    if (status === 401 || status === 403 || status === 429) {
+      // The site blocks bots: respect that and read a public archived copy instead of the live page.
+      const copy = await fetchArchivedCopy(rawUrl).catch(() => null);
+      if (!copy) throw new Error("That website blocks automated readers. Add your Instagram, screenshots or a PDF instead.");
+      page = copy;
+      archived = true;
+    } else {
+      throw new Error("The website didn't respond. Check the link and try again.");
+    }
+  }
   const { text: html, finalUrl } = page;
   const base = new URL(finalUrl);
   const abs = (href?: string) => {
@@ -184,7 +226,7 @@ export async function fetchWebsiteEvidence(rawUrl: string): Promise<WebsiteEvide
     .filter((t) => /rel\s*=\s*["']?stylesheet/i.test(t))
     .map((t) => abs(attr(t, "href")))
     .filter((u): u is string => !!u && !/fonts\.googleapis/.test(u))
-    .slice(0, 3);
+    .slice(0, archived ? 0 : 3); // the live site blocks us, so don't hit its stylesheets either
   let stylesheetsRead = 0;
   await Promise.all(
     sheetLinks.map(async (u) => {

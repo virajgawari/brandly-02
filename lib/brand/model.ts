@@ -10,6 +10,7 @@
 //   content     → pillars + Ehrenberg-Bass category entry points / distinctive assets
 
 import type { Platform } from "@/lib/types";
+import type { PostStats } from "@/lib/social/stats";
 import type { TextMeasures } from "@/lib/measure/text";
 import type { RatingResult } from "@/lib/measure/rate";
 import type { Contradiction } from "./contradictions";
@@ -196,6 +197,16 @@ export interface StyleGuide {
   typography: string;
   /** Share (0-100) of the brand's images that carry overlaid text. */
   textOnImagePct?: number;
+  /** Dominant on-image text colour as a #hex, as seen in the brand's posts. */
+  textColor?: string;
+  /** Id from FONT_PAIRS (lib/brand/fonts.ts) closest to the lettering in the posts. */
+  fontPairId?: string;
+  /** Whether on-image text sits on a pill or box background. */
+  textBox?: "none" | "pill" | "box";
+  /** Share (0-100) of the brand's images that show a person. */
+  peoplePct?: number;
+  /** How people appear: candid, posed, hands only, faces. */
+  peopleStyle?: string;
   /** ~40 words of lighting, medium, colour mood and aesthetic with no subject. Appended to every image prompt. */
   promptSuffix: string;
 }
@@ -215,6 +226,8 @@ export interface Playbook {
   formatMix?: { format: string; pct: number }[];
   /** Share of the feed by post type, counted from the scraped posts (not by the model). */
   postTypeMix?: { image: number; carousel: number; video: number };
+  /** Counted from the scraped posts (lib/social/stats.ts), not guessed by the model. */
+  postStats?: PostStats;
   /** Captions of the best posts, used as few-shot style anchors. */
   anchors: string[];
 }

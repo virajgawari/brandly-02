@@ -18,6 +18,7 @@ export interface RenderInput {
   /** Data URIs, already resolved. */
   logo?: string;
   logoTone?: "light" | "dark";
+  logoBoxed?: boolean;
   photo?: string;
   /** Product carousel: cover collage photos. */
   photos?: string[];
@@ -45,6 +46,9 @@ export async function renderPost(raw: RenderInput): Promise<Buffer[]> {
     brandName: model.name,
     logo,
     logoTone: input.logoTone,
+    logoBoxed: input.logoBoxed,
+    textColor: model.expression.styleGuide?.textColor,
+    textBox: model.expression.styleGuide?.textBox,
     width,
     height,
   };

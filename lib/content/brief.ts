@@ -314,7 +314,10 @@ export function pickBrief(
   if (products?.length) return { format, hook, pillar, entryPoint, moment, carousel: true, products };
   // A brand whose feed has no carousels should not get them; one that does gets them in proportion.
   const typeMix = playbook?.postTypeMix;
-  const feedAllowsCarousel = !typeMix || rand() * 100 < Math.min(typeMix.carousel * 1.5, 100);
+  // Lean toward whichever of carousel / single image earns more engagement on this brand's own feed (within 0.7x-1.4x).
+  const eng = playbook?.postStats?.engagementByType;
+  const lean = eng?.carousel && eng.image ? Math.min(1.4, Math.max(0.7, eng.carousel / eng.image)) : 1;
+  const feedAllowsCarousel = !typeMix || rand() * 100 < Math.min(typeMix.carousel * 1.5 * lean, 100);
   const carousel = !!(opts.allowCarousel && format.carousel && !recentCarousel && feedAllowsCarousel);
 
   return { format, hook, pillar, entryPoint, moment, carousel };

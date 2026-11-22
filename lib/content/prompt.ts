@@ -1,4 +1,5 @@
 // One prompt builder for every post generator (composer, automation, n8n).
+import { bestTimeLabel } from "@/lib/social/stats";
 import { z } from "zod";
 import type { BrandModel, Playbook } from "@/lib/brand/model";
 import { toPromptContext } from "@/lib/brand/projection";
@@ -47,6 +48,7 @@ export interface PostRequest {
 export function feedRules(playbook?: Playbook): string[] {
   if (!playbook) return [];
   const f = playbook.formatting;
+  const st = playbook.postStats;
   const out = [
     f?.avgWords ? `- Length: about ${f.avgWords} words in the caption (the brand's real average).` : "",
     f?.lineBreaks ? `- Line breaks and sentences: ${f.lineBreaks}` : "",
@@ -54,6 +56,8 @@ export function feedRules(playbook?: Playbook): string[] {
     playbook.cta ? `- Closing: ${playbook.cta}` : "",
     playbook.neverSoundsLike ? `- Never sound like: ${playbook.neverSoundsLike}` : "",
     playbook.adjectives?.length ? `- Sounds: ${playbook.adjectives.slice(0, 5).join(", ")}.` : "",
+    st?.hashtags.top.length ? `- Hashtags it reuses: ${st.hashtags.top.slice(0, 6).join(" ")}.` : "",
+    st && st.sampleSize >= 8 ? `- Its ${st.bestLength}-caption posts get the most engagement (${st.words.p25}-${st.words.p75} words is its usual range).` : "",
   ].filter(Boolean);
   return out.length ? [`THE BRAND'S OWN HABITS (learned from its real posts; they outrank generic style advice):`, ...out] : [];
 }
@@ -221,7 +225,7 @@ export function finalizePost(raw: unknown, r: Pick<PostRequest, "model" | "dna" 
     // Never show more tags than the brand's playbook allows, even if the model over-delivers.
     hashtags: dedupeTags(p?.hashtags ?? (loose.hashtags ?? []).slice(0, 10)).slice(0, hashtagRange(r.model).max),
     cta,
-    bestTimeToPost: p?.bestTimeToPost || loose.bestTimeToPost || "",
+    bestTimeToPost: bestTimeLabel(r.model?.voice.playbook?.postStats) || p?.bestTimeToPost || loose.bestTimeToPost || "",
     postType: r.brief.carousel ? "Carousel" : cleanPostType(p?.postType || loose.postType),
     platformVariants: Object.fromEntries(Object.entries(variants).filter(([k, v]) => (r.platforms as string[]).includes(k) && typeof v === "string" && v.trim() !== "" && !/^(same as|see|identical to|as above)\b/i.test(v.trim()))),
     imagePrompt: imagePromptFromBrief(vb, r.model, r.dna, loose.imagePrompt ?? headline),

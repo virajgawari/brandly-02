@@ -31,6 +31,12 @@ export function parseHashtagRule(rule?: string): HashtagRange {
 }
 
 export function hashtagRange(model?: BrandModel): HashtagRange {
+  // Counted from the brand's real posts beats the model's reading of them.
+  const counted = model?.voice.playbook?.postStats;
+  if (counted && counted.sampleSize >= 8) {
+    const m = counted.hashtags.median;
+    return m <= 0 ? { min: 0, max: 0 } : { min: Math.max(1, Math.round(m * 0.7)), max: Math.ceil(m * 1.3) };
+  }
   return parseHashtagRule(model?.voice.playbook?.hashtagRule);
 }
 

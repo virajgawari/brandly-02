@@ -111,3 +111,15 @@ export async function saveBrandVersion(
   }
   return { versionId: version.id, changed };
 }
+
+/**
+ * The saved Brand Model for a brand in the caller's workspace (RLS applies), or the
+ * client-sent model only when the brand isn't saved yet (first moments after onboarding).
+ * AI routes use this so a client can't make the server run on a forged brand.
+ */
+export async function trustedModel(s: Session, sent: BrandModel | undefined): Promise<BrandModel | undefined> {
+  if (!sent?.id) return sent;
+  const { data } = await s.db.from("brands").select("current:brand_versions!brands_current_version_fk(model)").eq("id", sent.id).maybeSingle();
+  const saved = (data?.current as unknown as { model: BrandModel } | null)?.model;
+  return saved ? upgradeModel(saved) : sent;
+}

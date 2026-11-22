@@ -212,6 +212,17 @@ export function InstagramSection({
                   <p className="text-sm leading-snug">{sg[k]}</p>
                 </div>
               ))}
+              {(sg.textColor || sg.fontPairId || sg.textBox || sg.peoplePct !== undefined) && (
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-text-muted">Applied to your posts</p>
+                  <p className="text-sm leading-snug flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {sg.textColor && <span className="inline-flex items-center gap-1"><span className="size-3 rounded-full border border-border" style={{ background: sg.textColor }} />Text {sg.textColor}</span>}
+                    {sg.fontPairId && <span>Font: {sg.fontPairId}</span>}
+                    {sg.textBox && sg.textBox !== "none" && <span>Text on a {sg.textBox}</span>}
+                    {sg.peoplePct !== undefined && <span>People in {sg.peoplePct}% of images{sg.peopleStyle ? ` (${sg.peopleStyle})` : ""}</span>}
+                  </p>
+                </div>
+              )}
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-text-muted">Added to every image prompt</p>
                 <p className="text-xs leading-snug text-text-muted">{sg.promptSuffix}</p>

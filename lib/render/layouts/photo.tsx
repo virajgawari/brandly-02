@@ -1,6 +1,6 @@
 // Photo-led layouts: photo + band, full-bleed, split, framed product.
 import { readableOn } from "@/lib/brand/color";
-import { AccentMark, CornerLogo, Cta, edgePad, Frame, Headline, Logo, logoSpace, PAD, Photo, scheme, Subline, type LayoutProps } from "./shared";
+import { AccentMark, CornerLogo, Cta, edgePad, Frame, Headline, Logo, logoSpace, PAD, Photo, scheme, Subline, textBoxStyle, type LayoutProps } from "./shared";
 
 /** Photo on top, solid brand band with the headline below. */
 export function PhotoBand(p: LayoutProps) {
@@ -39,8 +39,10 @@ export function FullBleed(p: LayoutProps) {
       />
       <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", width: "100%", height: "100%", padding: PAD, paddingBottom: PAD + logoSpace(p, "bottom") }}>
         <AccentMark p={p} color={s.accent === "#111111" ? p.colors.accent : s.accent} />
-        <Headline p={p} color="#FFFFFF" />
-        <Subline p={p} color="rgba(255,255,255,0.85)" />
+        <div style={{ display: "flex", flexDirection: "column", ...textBoxStyle(p) }}>
+          <Headline p={p} color="#FFFFFF" />
+          <Subline p={p} color="rgba(255,255,255,0.85)" />
+        </div>
       </div>
       <CornerLogo p={p} color="#FFFFFF" />
     </Frame>

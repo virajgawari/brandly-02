@@ -13,7 +13,7 @@ export type VersionSource = "user" | "stage" | "build";
 
 export interface Account {
   user: { id: string; email?: string; name: string | null };
-  workspace: { id: string; name: string; plan: string; data_training_opt_in: boolean; ai_watermark?: boolean; email_prefs?: { weekly?: boolean; product?: boolean } };
+  workspace: { id: string; name: string; plan: string; data_training_opt_in: boolean; ai_watermark?: boolean; timezone?: string; email_prefs?: { weekly?: boolean; product?: boolean } };
   /** The user's role in this workspace (owner, admin, editor, viewer). */
   role?: string | null;
 }
@@ -75,14 +75,22 @@ async function api(method: string, path: string, body?: unknown) {
   return data;
 }
 
-function sync(key: string, method: string, path: string, body?: unknown) {
+/** updated_at the server last confirmed per brand; sent back so a stale tab gets a 409 instead of overwriting. */
+const serverStamp = new Map<string, string>();
+
+function sync(key: string, method: string, path: string, body?: unknown | (() => unknown)) {
   const prev = queues.get(key) ?? Promise.resolve();
   const next = prev
     .catch(() => undefined)
-    .then(() => api(method, path, body))
+    .then(async () => {
+      const data = await api(method, path, typeof body === "function" ? (body as () => unknown)() : body);
+      if (typeof data?.updatedAt === "string") serverStamp.set(key, data.updatedAt);
+    })
     .catch((err: Error) => {
       console.error(`[sync] ${method} ${path}`, err);
-      useStore.setState({ syncError: `Couldn't save your changes: ${err.message}` });
+      useStore.setState({ syncError: `Couldn't save your changes: ${err.message}. Showing the saved version.` });
+      // Roll back: the screen must not keep showing something the server refused.
+      void useStore.getState().hydrate();
     });
   queues.set(key, next);
   return next;
@@ -110,6 +118,7 @@ export const useStore = create<AppState>()(
         try {
           const data = await api("GET", "/api/bootstrap");
           const brands = (data.brands as Brand[]).filter((b) => !deleting.has(b.id));
+          for (const b of brands) serverStamp.set(b.id, b.updatedAt);
           const active = get().activeBrandId;
           set({
             hydrated: true,
@@ -131,7 +140,7 @@ export const useStore = create<AppState>()(
 
       addBrand: (brand) => {
         set((s) => ({ brands: [...s.brands, brand], activeBrandId: s.activeBrandId ?? brand.id }));
-        if (brand.model) sync(brand.id, "PUT", `/api/brands/${brand.id}`, { model: brand.model, sources: brand.sources, source: "user" });
+        if (brand.model) sync(brand.id, "PUT", `/api/brands/${brand.id}`, () => ({ model: brand.model, sources: brand.sources, source: "user", baseUpdatedAt: serverStamp.get(brand.id) }));
       },
 
       updateBrand: (id, updates) => {
@@ -139,7 +148,7 @@ export const useStore = create<AppState>()(
           brands: s.brands.map((b) => (b.id === id ? { ...b, ...updates, updatedAt: new Date().toISOString() } : b)),
         }));
         const b = get().brands.find((x) => x.id === id);
-        if (b?.model) sync(id, "PUT", `/api/brands/${id}`, { model: { ...b.model, name: b.name }, sources: b.sources, source: "user" });
+        if (b?.model) sync(id, "PUT", `/api/brands/${id}`, () => ({ model: { ...b.model!, name: b.name }, sources: b.sources, source: "user", baseUpdatedAt: serverStamp.get(id) }));
       },
 
       // The database removes the brand's posts and rules with it (FK cascade).
@@ -172,12 +181,13 @@ export const useStore = create<AppState>()(
           brands: existing ? s.brands.map((b) => (b.id === model.id ? brand : b)) : [...s.brands, brand],
           activeBrandId: model.id,
         }));
-        sync(model.id, "PUT", `/api/brands/${model.id}`, {
+        sync(model.id, "PUT", `/api/brands/${model.id}`, () => ({
           model,
           sources: brand.sources,
           source: opts?.source ?? "user",
           stageId: opts?.stageId,
-        });
+          baseUpdatedAt: serverStamp.get(model.id),
+        }));
       },
 
       getActiveBrand: () => {

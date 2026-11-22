@@ -4,12 +4,16 @@ import type { Playbook, StyleGuide } from "../model";
 import type { ScoredPost } from "../../social/types";
 import type { StageDefinition } from "./types";
 import { FORMATS } from "../../content/brief";
+import { FONT_PAIRS } from "../fonts";
+import { computePostStats } from "../../social/stats";
 
 export interface SocialInput {
   /** Cleaned, scored posts from `triage`, best first. */
   socialPosts?: ScoredPost[];
   /** Base64 JPEGs of the top posts' images (10-15). */
   socialImages?: string[];
+  /** IANA time zone used to read posting times. Defaults to UTC. */
+  timeZone?: string;
 }
 
 const MAX_CAPTION_CHARS = 600;
@@ -23,6 +27,11 @@ Return JSON only:
   "composition": "where the subject sits, use of negative space for text, camera angles, aspect ratios",
   "typography": "font categories, alignment, box or pill backgrounds, logo placement. Empty string if no text appears",
   "textOnImagePct": 0,  // 0-100: share of these images with text or graphics laid over the photo
+  "textColor": "#RRGGBB, the most common colour of the lettering laid over the images (white is #FFFFFF). Empty string if no text appears",
+  "fontPairId": "the ONE id from this list whose lettering is closest to the text in the images: ${FONT_PAIRS.map((f) => `${f.id} (${f.feel})`).join("; ")}. Empty string if no text appears",
+  "textBox": "none, pill or box: whether the lettering sits on a rounded pill or a solid box background (none if it sits directly on the photo)",
+  "peoplePct": 0,  // 0-100: share of these images in which a person (face, body or hands) is visible
+  "peopleStyle": "if people appear: candid, posed, hands only, close-up faces, group shots, and so on (max 12 words). Empty string if none",
   "promptSuffix": "about 40 words describing lighting, camera or medium, colour mood and aesthetic, to append to every image prompt. Do NOT mention any specific subject."
 }`;
 
@@ -104,6 +113,9 @@ export const socialStage: StageDefinition<SocialInput> = {
       );
     }
     if (styleGuide) patches.push({ patch: { expression: { styleGuide } }, options: opts });
+    // The lettering in the posts decides the render font too (merge keeps any higher-confidence or locked font).
+    const pair = styleGuide?.fontPairId ? FONT_PAIRS.find((f) => f.id === styleGuide!.fontPairId) : undefined;
+    if (pair) patches.push({ patch: { expression: { tokens: { font: { heading: { $value: pair.heading }, body: { $value: pair.body } } } } }, options: opts });
 
     try {
       const r = await generateStructured(
@@ -114,7 +126,12 @@ export const socialStage: StageDefinition<SocialInput> = {
       );
       const anchors = posts.filter((p) => p.isTop && p.caption.trim()).slice(0, ANCHORS).map((p) => p.caption.trim());
       const { formatMix, ...rest } = r;
-      const playbook: Playbook = { ...rest, formatMix: cleanFormatMix(formatMix ?? []), postTypeMix: postTypeMix(posts), anchors };
+      const postStats = computePostStats(posts, input.timeZone);
+      // Counted values beat the model's estimate of the same thing.
+      const formatting = postStats
+        ? { ...rest.formatting, avgWords: Math.round(postStats.words.median), emoji: `${postStats.emoji.median} per post, used in ${postStats.emoji.usedPct}% of posts` }
+        : rest.formatting;
+      const playbook: Playbook = { ...rest, formatting, formatMix: cleanFormatMix(formatMix ?? []), postTypeMix: postTypeMix(posts), ...(postStats ? { postStats } : {}), anchors };
       const avoid = Array.from(new Set([...(model.voice.vocabulary.avoid ?? []), ...r.blacklist]));
       patches.push({
         patch: { voice: { playbook, ...(avoid.length ? { vocabulary: { avoid } } : {}) } },

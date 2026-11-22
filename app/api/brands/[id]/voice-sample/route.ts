@@ -4,7 +4,8 @@ export const maxDuration = 60;
 import { generateText } from "@/lib/llm";
 import { toPromptContext } from "@/lib/brand/projection";
 import { llmScope } from "@/lib/db/llm-scope";
-import { errorResponse, requireSession } from "@/lib/db/session";
+import { errorResponse } from "@/lib/db/session";
+import { requireAi } from "@/lib/db/budget";
 import type { BrandModel } from "@/lib/brand/model";
 
 // Rewrites one sample sentence in the brand's current voice (used by the voice sliders).
@@ -12,7 +13,7 @@ import type { BrandModel } from "@/lib/brand/model";
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
-    await requireSession();
+    await requireAi();
   } catch (err) {
     return errorResponse(err, "voice-sample auth");
   }

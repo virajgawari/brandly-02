@@ -80,6 +80,11 @@ export interface RenderedMedia {
   show?: { logo?: boolean; cta?: boolean; subline?: boolean; image?: boolean; headline?: boolean };
   /** Carousel: one photo per slide, same order as post.slides. `photo` is the first. */
   slidePhotos?: { kind: "brand" | "generated"; ref: string }[];
+  /** Provenance: the image contains AI-generated visuals (passed to platforms as self-disclosure). */
+  isAiGenerated?: boolean;
+  hasSyntheticVisual?: boolean;
+  /** C2PA Content Credentials were embedded in the stored file(s). */
+  c2paSigned?: boolean;
 }
 
 export interface GeneratedPost {
@@ -171,6 +176,8 @@ export interface RssTrigger {
   type: "rss";
   feedUrl: string;
   checkIntervalHours: number;
+  /** Link of the newest article already turned into a post (set by the runner). */
+  lastSeen?: string;
 }
 
 export interface RecurringTrigger {

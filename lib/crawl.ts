@@ -2,7 +2,7 @@ import { fetchCapped, fetchPageEvidence, fetchWebsiteEvidence, type PageEvidence
 
 const TRACKING = /^(utm_|fbclid|gclid|mc_|ref$)/i;
 const ASSET = /\.(pdf|jpe?g|png|gif|svg|webp|avif|ico|zip|mp4|mov|mp3|css|js|xml|json|woff2?)$/i;
-const SKIP_PATH = /\/(cart|checkout|account|login|log-in|signin|sign-in|signup|sign-up|register|search|wp-admin|wp-json|cdn-cgi|tag|tags|author|feed)(\/|$)|\/page\/\d+/i;
+const SKIP_PATH = /\/(cart|checkout|account|login|log-in|signin|sign-in|signup|sign-up|register|search|wp-admin|wp-json|cdn-cgi|tag|tags|author|feed|privacy|privacy-policy|terms|terms-of-service|terms-and-conditions|legal|cookie|cookies|cookie-policy|refund|refund-policy|returns|shipping-policy|sitemap)(\/|$)|\/page\/\d+/i;
 
 const RANKS: [RegExp, number][] = [
   [/about|story|team|our-|mission|values|who-we/i, 0],
@@ -86,9 +86,21 @@ function sitemapLocs(xml: string): string[] {
   return [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => m[1]);
 }
 
-async function readSitemap(origin: string, cap: number): Promise<string[]> {
+/** `Sitemap:` lines declared in robots.txt (same-origin only). */
+export function robotsSitemaps(txt: string, origin: string): string[] {
+  return [...txt.matchAll(/^\s*sitemap\s*:\s*(\S+)/gim)].map((m) => m[1]).filter((u) => {
+    try {
+      return new URL(u).origin === origin;
+    } catch {
+      return false;
+    }
+  });
+}
+
+async function readSitemap(origin: string, cap: number, declared: string[] = []): Promise<string[]> {
   try {
-    const root = await fetchCapped(new URL("/sitemap.xml", origin).toString(), 600_000, 6_000);
+    const first = declared[0] ?? new URL("/sitemap.xml", origin).toString();
+    const root = await fetchCapped(first, 600_000, 6_000);
     if (!root) return [];
     let locs = sitemapLocs(root.text);
     const nested = locs.filter((l) => /\.xml(\?|$)/i.test(l)).slice(0, 2);
@@ -143,8 +155,9 @@ export async function crawlSite(rawUrl: string, opts: CrawlOptions = {}): Promis
   const robots = await robotsP;
   if (robots) allowed = parseRobots(robots.text);
 
-  let candidates = selectLinks(home.links, origin, maxPages * 2);
-  if (candidates.length < 10) candidates = selectLinks([...candidates, ...(await readSitemap(origin, maxPages))], origin, maxPages * 2);
+  // Always read the sitemap too: selectLinks ranks about/product/menu pages first, so the small page budget goes to high-signal routes.
+  const sitemapUrls = await readSitemap(origin, maxPages, robots ? robotsSitemaps(robots.text, origin) : []);
+  const candidates = selectLinks([...home.links, ...sitemapUrls], origin, maxPages * 2);
   const queue = candidates.filter((u) => allowed(new URL(u).pathname + new URL(u).search));
 
   const pages: PageEvidence[] = [];

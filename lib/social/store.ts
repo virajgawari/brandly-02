@@ -4,6 +4,9 @@ import { downloadAsJpeg } from "@/lib/render/assets";
 import type { ScoredPost } from "./types";
 
 const TOP_IMAGES = 12;
+/** Max images (cover + carousel slides) sent to the vision call. */
+const VISION_IMAGES = 15;
+const SLIDES_PER_POST = 3;
 
 /**
  * SECURITY: callers pass either the user's RLS client or the service-role client. Every query
@@ -11,20 +14,22 @@ const TOP_IMAGES = 12;
  */
 type Client = SupabaseClient;
 
-/** Copies one image per top post into the `images` bucket; returns the storage paths by post id. */
+/** Copies the cover (and up to 2 more carousel slides) of each top post into the `images` bucket; returns storage paths by post id, cover first. */
 async function storeTopImages(db: Client, workspaceId: string, brandId: string, posts: ScoredPost[]) {
   const paths = new Map<string, string[]>();
   const top = posts.filter((p) => p.isTop).slice(0, TOP_IMAGES);
   for (let i = 0; i < top.length; i += 4) {
     await Promise.all(
       top.slice(i, i + 4).map(async (p) => {
-        const url = p.mediaUrls[0];
-        if (!url) return;
-        const img = await downloadAsJpeg(url, 1280);
-        if (!img) return;
-        const path = `${workspaceId}/brands/${brandId}/social/${p.externalId}.jpg`;
-        const { error } = await db.storage.from("images").upload(path, img.buf, { contentType: "image/jpeg", upsert: true });
-        if (!error) paths.set(p.externalId, [path]);
+        const saved: string[] = [];
+        for (const [n, url] of p.mediaUrls.slice(0, SLIDES_PER_POST).entries()) {
+          const img = await downloadAsJpeg(url, 1280);
+          if (!img) continue;
+          const path = `${workspaceId}/brands/${brandId}/social/${p.externalId}${n ? `-${n}` : ""}.jpg`;
+          const { error } = await db.storage.from("images").upload(path, img.buf, { contentType: "image/jpeg", upsert: true });
+          if (!error) saved.push(path);
+        }
+        if (saved.length) paths.set(p.externalId, saved);
       }),
     );
   }
@@ -82,13 +87,18 @@ export async function loadSocialInput(db: Client, workspaceId: string, brandId: 
     engagementScore: Number(r.engagement_score),
     isTop: r.is_top,
   }));
-  const paths = (data ?? []).filter((r) => r.is_top).flatMap((r) => (r.stored_paths ?? []).slice(0, 1)).slice(0, TOP_IMAGES);
+  // Covers first so every top post is represented, then carousel slides while there is room.
+  const topRows = (data ?? []).filter((r) => r.is_top);
+  const covers = topRows.flatMap((r) => (r.stored_paths ?? []).slice(0, 1));
+  const slides = topRows.flatMap((r) => (r.stored_paths ?? []).slice(1));
+  const paths = [...covers, ...slides].slice(0, VISION_IMAGES);
   const socialImages: string[] = [];
   for (const path of paths) {
     const { data: blob } = await db.storage.from("images").download(path);
     if (blob) socialImages.push(Buffer.from(await blob.arrayBuffer()).toString("base64"));
   }
-  return { socialPosts, socialImages };
+  const { data: ws } = await db.from("workspaces").select("timezone").eq("id", workspaceId).maybeSingle();
+  return { socialPosts, socialImages, timeZone: (ws?.timezone as string | undefined) || "UTC" };
 }
 
 export interface TopPostView {

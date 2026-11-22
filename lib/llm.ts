@@ -50,7 +50,7 @@ export const MODELS: Record<LlmTask, { order: Provider[] } & Record<Provider, st
     order: ["gemini", "claude"],
     groq: [],
     claude: list(process.env.MODEL_VISION_CLAUDE, ["claude-haiku-5-5"]),
-    gemini: list(process.env.MODEL_VISION_GEMINI, ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"]),
+    gemini: list(process.env.MODEL_VISION_GEMINI, ["gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"]),
   },
   creative: {
     order: ["groq", "claude", "gemini"],
@@ -70,7 +70,7 @@ export const MODELS: Record<LlmTask, { order: Provider[] } & Record<Provider, st
 export const CLAUDE_MODEL = MODELS.fast.claude[0];
 export const GEMINI_MODEL = MODELS.fast.gemini[0];
 
-const REQUEST_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 export interface GenerateOptions {
   task?: LlmTask;

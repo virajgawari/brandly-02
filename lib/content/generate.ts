@@ -13,6 +13,7 @@ import { checkRules, type RuleCheck } from "@/lib/judge/rules";
 import { PLATFORM_LIMITS } from "@/lib/templates";
 import { chooseLayout, pickBrief, type PostBrief } from "./brief";
 import { recentPosts } from "./history";
+import { hashtagRange } from "./hashtags";
 import { bannedWords, buildPostPrompt, buildRevisePrompt, finalizePost, postSchemaFor, POST_PROMPT_VERSION, POST_TEMPERATURE } from "./prompt";
 
 export interface GenerateInput {
@@ -26,6 +27,8 @@ export interface GenerateInput {
   triggerContext?: string;
   /** Product carousel: validated products in slide order. */
   products?: ProductRef[];
+  /** One post about one chosen product: no carousel. */
+  single?: boolean;
   /** Which feature the call is logged under. */
   feature: "generate-post" | "automation";
   /** Original request body, forwarded to n8n alongside the built prompt. */
@@ -62,7 +65,7 @@ async function checkAndRevise(
   // Everything the model was allowed to know. Specifics in the post that are not in here count as invented.
   const facts = [c.prompt.brandContext ?? "", c.topic, c.additionalContext, c.triggerContext, ...(c.products ?? []).map((x) => `${x.name} ${x.note ?? ""}`)].filter(Boolean).join("\n");
   const check = async (p: GeneratedPost) => {
-    const rules = checkRules(p, { banned: bannedWords(model), platforms, limits, facts });
+    const rules = checkRules(p, { banned: bannedWords(model), platforms, limits, facts, hashtags: hashtagRange(model) });
     // The judge tries Gemini first, which can be slow or out of quota; never let it use up the route's 60 s.
     const fit: FitCheck =
       model && left() > MIN_JUDGE_MS
@@ -115,7 +118,7 @@ export async function generatePost(input: GenerateInput): Promise<GenerateResult
   const session = await optionalSession();
   const history = await recentPosts(model?.id, 15, session);
   const brief = pickBrief(model, history, input.template, {
-    allowCarousel: platforms.some((p) => p === "instagram" || p === "linkedin"),
+    allowCarousel: !input.single && platforms.some((p) => p === "instagram" || p === "linkedin"),
     products: input.products,
     request: [input.topic, input.additionalContext, input.triggerContext].filter(Boolean).join(" "),
   });
@@ -154,6 +157,6 @@ export async function generatePost(input: GenerateInput): Promise<GenerateResult
     return { post, generationId };
   }
   const kit = layoutKitOf(model);
-  if (kit) post.layout = chooseLayout(kit, post.format, history, { carousel: brief.carousel && (post.slides?.length ?? 0) >= 2 });
+  if (kit) post.layout = chooseLayout(kit, post.format, history, { textOnImagePct: model?.expression.styleGuide?.textOnImagePct, carousel: brief.carousel && (post.slides?.length ?? 0) >= 2 });
   return { post, generationId };
 }

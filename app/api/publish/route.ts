@@ -1,41 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callN8n, n8nEnabled } from "@/lib/n8n";
-import { postizEnabled, publishWithPostiz } from "@/lib/postiz";
-import { errorResponse, requireSession } from "@/lib/db/session";
-import { signPaths } from "@/lib/render/media";
-import type { ScheduledPost } from "@/lib/types";
+import { errorResponse, requireEditor } from "@/lib/db/session";
+import { postFromRow, POST_SELECT, type PostRow } from "@/lib/db/mappers";
+import { publishPost } from "@/lib/publish";
 
 export const maxDuration = 60;
 
-// Publishes through the n8n backend (which posts via Postiz) when N8N_WEBHOOK_BASE_URL is set.
-// Without n8n, falls back to calling Postiz directly (POSTIZ_API_URL/POSTIZ_API_KEY).
-// Body: { post, mediaUrls?, publishAt? } — a future publishAt makes Postiz schedule the post.
+// Body: { postId }. Publishes the stored post right now; the server reads the post itself,
+// so the client can't publish content that isn't in the database, and viewers can't publish at all.
+// Future-dated posts are published by /api/cron/publish when they fall due.
 export async function POST(req: NextRequest) {
-  let session;
   try {
-    session = await requireSession();
-  } catch (err) {
-    return errorResponse(err, "publish auth");
-  }
-  const body = await req.json();
-  // Branded images live in private storage: sign fresh links for every slide so Postiz can fetch them.
-  const paths = (body?.post as ScheduledPost | undefined)?.content?.rendered?.paths;
-  if (!body?.mediaUrls?.length && paths?.length) {
-    try {
-      body.mediaUrls = await signPaths(session, "images", paths, 60 * 60 * 24 * 7);
-    } catch (err) {
-      console.warn("[publish] couldn't sign media", err);
-    }
-  }
-  if (n8nEnabled() || !postizEnabled()) return callN8n("publish", body);
+    const s = await requireEditor();
+    const body = (await req.json().catch(() => null)) as { postId?: string } | null;
+    if (!body?.postId) return NextResponse.json({ error: "postId is required" }, { status: 400 });
 
-  if (!body?.post) return NextResponse.json({ error: "Missing post" }, { status: 400 });
-  try {
-    const out = await publishWithPostiz({ post: body.post, mediaUrls: body.mediaUrls, publishAt: body.publishAt });
-    return NextResponse.json({ postId: body.post.id, ...out }, { status: out.status === "failed" ? 502 : 200 });
+    // RLS: only a post in the caller's workspace is visible.
+    const { data } = await s.db.from("posts").select(POST_SELECT).eq("id", body.postId).eq("workspace_id", s.workspaceId).maybeSingle();
+    if (!data) return NextResponse.json({ error: "Post not found" }, { status: 404 });
+
+    if (n8nEnabled()) return callN8n("publish", { post: postFromRow(data as unknown as PostRow) });
+
+    const out = await publishPost(s.workspaceId, body.postId);
+    if (out.status === "skipped") return NextResponse.json({ error: out.error }, { status: 409 });
+    if (out.error) return NextResponse.json({ error: out.error, ...out }, { status: out.status === "failed" ? 502 : 200 });
+    return NextResponse.json({ postId: body.postId, ...out }, { status: out.status === "failed" ? 502 : 200 });
   } catch (err) {
-    console.error("[publish:postiz]", err);
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: `Could not reach Postiz: ${msg}` }, { status: 502 });
+    return errorResponse(err, "publish");
   }
 }

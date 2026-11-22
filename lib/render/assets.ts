@@ -1,4 +1,5 @@
 import "server-only";
+import { hasOpaqueWhiteBox } from "./layout-qa";
 import { safeFetch } from "@/lib/net/safe-fetch";
 import { hexToRgb } from "@/lib/brand/color";
 import type { Db } from "@/lib/db/session";
@@ -134,6 +135,20 @@ export async function imagePixels(url: string, side = 64): Promise<ImagePixels |
     return { data: new Uint8Array(data), channels: 4, jpeg512 };
   } catch {
     return null;
+  }
+}
+
+/** True when the logo is an opaque white rectangle (no real transparency). */
+export async function logoHasWhiteBox(dataUri: string | undefined): Promise<boolean> {
+  if (!dataUri?.startsWith("data:")) return false;
+  const sharp = await getSharp();
+  if (!sharp) return false;
+  try {
+    const buf = Buffer.from(dataUri.split(",")[1], "base64");
+    const { data, info } = await sharp(buf).resize(96, 96, { fit: "inside" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    return hasOpaqueWhiteBox(data, info.width, info.height);
+  } catch {
+    return false;
   }
 }
 

@@ -177,6 +177,37 @@ try {
   try { await c.query("savepoint s9"); await c.query(`insert into jobs (workspace_id, kind, dedupe_key) values ($1,'test.echo','k1')`, [wsA]); } catch { blocked = true; await c.query("rollback to savepoint s9"); }
   ok(blocked, "dedupe_key allows only one active job per key");
 
+
+  // ── 0016 workspace_connections: isolation, roles, token secrecy ────────────
+  await c.query(`reset role`);
+  await c.query(`insert into workspace_members (workspace_id, user_id, role) values ($1,$2,'viewer'), ($1,$3,'editor')`, [wsA, b, cId]);
+  const conn = (await c.query(`insert into workspace_connections (workspace_id, provider, platform, external_account_id) values ($1,'managed','instagram','ig-1') returning id`, [wsA])).rows[0].id;
+  await c.query(`insert into workspace_connection_secrets (connection_id, access_token, refresh_token) values ($1,'at','rt')`, [conn]);
+  const connB = (await c.query(`insert into workspace_connections (workspace_id, provider, platform, external_account_id) values ($1,'managed','x','x-1') returning id`, [wsB])).rows[0].id;
+
+  await as(a); // owner of A
+  ok((await c.query(`select 1 from workspace_connections`)).rowCount === 1, "owner sees only own workspace's connections");
+  ok((await c.query(`update workspace_connections set status='revoked' where id=$1`, [connB])).rowCount === 0, "workspace A cannot update workspace B's connection");
+  ok((await c.query(`delete from workspace_connections where id=$1`, [connB])).rowCount === 0, "workspace A cannot delete workspace B's connection");
+  ok(await fails("k1", `insert into workspace_connections (workspace_id, provider, platform, external_account_id) values ($1,'managed','x','evil')`, [wsB]), "workspace A cannot insert into workspace B");
+  ok((await c.query(`select 1 from workspace_connection_secrets`)).rowCount === 0, "owner cannot read connection tokens from the client");
+  ok(await fails("k2", `insert into workspace_connection_secrets (connection_id, access_token) values ($1,'x')`, [conn]), "clients cannot write connection tokens");
+
+  await asUser(b, "b@test.dev"); // viewer in A
+  ok((await c.query(`select 1 from workspace_connections where id=$1`, [conn])).rowCount === 1, "viewer can list connections");
+  ok(await fails("k3", `insert into workspace_connections (workspace_id, provider, platform, external_account_id) values ($1,'managed','linkedin','li-1')`, [wsA]), "viewer cannot connect a channel");
+  ok((await c.query(`delete from workspace_connections where id=$1`, [conn])).rowCount === 0, "viewer cannot disconnect a channel");
+
+  await asUser(cId, "c@test.dev"); // editor in A
+  await c.query(`insert into workspace_connections (workspace_id, provider, platform, external_account_id) values ($1,'managed','linkedin','li-1')`, [wsA]);
+  ok((await c.query(`update workspace_connections set status='expired' where id=$1`, [conn])).rowCount === 1, "editor can update a connection");
+  ok((await c.query(`delete from workspace_connections where platform='linkedin' and workspace_id=$1`, [wsA])).rowCount === 1, "editor can disconnect a channel");
+
+  await c.query(`reset role`); // the server (service role / direct connection) can read tokens and refresh them
+  ok((await c.query(`select refresh_token from workspace_connection_secrets where connection_id=$1`, [conn])).rows[0]?.refresh_token === "rt", "server can read tokens");
+  ok((await c.query(`update workspace_connection_secrets set access_token='at2', expires_at=now() + interval '1 hour' where connection_id=$1`, [conn])).rowCount === 1, "server can update token expiry on refresh");
+  await c.query(`delete from workspace_members where workspace_id=$1 and user_id in ($2,$3)`, [wsA, b, cId]);
+
   // ── 0007 eval_runs: written only over the direct connection ────────────────
   await c.query(`reset role`);
   await c.query(`insert into eval_runs (run_id, prompt_version, brief_id, brand_key) values (gen_random_uuid(), 'generate-post@x', 't', 't')`);

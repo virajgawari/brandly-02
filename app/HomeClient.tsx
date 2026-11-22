@@ -244,6 +244,41 @@ function BrandHome({ brand }: { brand: Brand }) {
               )}
             </Card>
 
+            <Card className="p-5">
+              <Label>Visual style</Label>
+              {model?.expression.styleGuide ? (
+                <div className="space-y-2 text-sm">
+                  <p>{model.expression.styleGuide.medium}</p>
+                  <p className="text-text-muted">{model.expression.styleGuide.palette}</p>
+                </div>
+              ) : (
+                <p className="text-sm text-text-muted">
+                  Not learned yet.{" "}
+                  <Link href="/brand" className="underline underline-offset-2 hover:text-text">
+                    Learn from your Instagram
+                  </Link>
+                </p>
+              )}
+            </Card>
+
+            <Card className="p-5">
+              <Label>Post playbook</Label>
+              {model?.voice.playbook ? (
+                <div className="space-y-3 text-sm">
+                  <Chips items={model.voice.playbook.pillars.map((p) => `${p.name} ${p.pct}%`)} />
+                  <p className="text-text-muted">{model.voice.playbook.adjectives.join(", ")}</p>
+                  <p className="text-text-muted">{model.voice.playbook.cta}</p>
+                </div>
+              ) : (
+                <p className="text-sm text-text-muted">
+                  Not learned yet.{" "}
+                  <Link href="/brand" className="underline underline-offset-2 hover:text-text">
+                    Learn from your Instagram
+                  </Link>
+                </p>
+              )}
+            </Card>
+
             <Card className="p-5 md:col-span-2">
               <Label>Photos</Label>
               {photoUrls.length > 0 ? (

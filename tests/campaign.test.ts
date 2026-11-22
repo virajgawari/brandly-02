@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { campaignTopic, CampaignBriefSchema, cleanCampaignBrief, maxCampaignCalls, CAMPAIGN_POSTS } from "@/lib/content/campaign";
+import { campaignTopic, CampaignBriefSchema, cleanCampaignBrief, maxCampaignCalls, CAMPAIGN_MAX } from "@/lib/content/campaign";
 
 const post = (title: string) => ({ title, pitch: "A plain sentence about it.", template: "announcement" });
 
@@ -15,14 +15,14 @@ describe("campaign brief", () => {
     expect(CampaignBriefSchema.safeParse({ goal: "Launch", posts: [{ ...post("Cold brew"), template: "nope" }] }).success).toBe(false);
   });
 
-  it("dedupes titles and caps the post count", () => {
+  it("dedupes titles and keeps the count the plan asked for (max 8)", () => {
     const b = CampaignBriefSchema.parse({
       goal: "Launch",
       posts: [post("One"), post("one"), post("Two"), post("Three"), post("Four"), post("Five")],
     });
     const c = cleanCampaignBrief(b);
-    expect(c.posts.map((p) => p.title)).toEqual(["One", "Two", "Three", "Four"]);
-    expect(c.posts.length).toBeLessThanOrEqual(CAMPAIGN_POSTS);
+    expect(c.posts.map((p) => p.title)).toEqual(["One", "Two", "Three", "Four", "Five"]);
+    expect(c.posts.length).toBeLessThanOrEqual(CAMPAIGN_MAX);
   });
 
   it("builds a topic carrying offer, product and goal", () => {

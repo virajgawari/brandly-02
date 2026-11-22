@@ -61,6 +61,31 @@ interface AppState {
 // Requests for the same record run in order (a post's PATCH never overtakes its POST).
 const queues = new Map<string, Promise<unknown>>();
 
+const TZ_FLAG = "brandly.tz-checked";
+const browserTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** Remember that the timezone was chosen (or auto-detected) so we never override it again. */
+export function markTimezoneChosen() {
+  try {
+    localStorage.setItem(TZ_FLAG, "1");
+  } catch {}
+}
+
+/**
+ * Workspaces start on UTC, which skews best-time stats and automation times. Once per browser,
+ * for an owner/admin whose workspace is still on that default, switch to the browser's timezone.
+ */
+async function autoSetTimezone(ws: { timezone?: string } | undefined, role: string, apply: () => Promise<void>) {
+  if (typeof window === "undefined" || !ws || (ws.timezone ?? "UTC") !== "UTC" || !["owner", "admin"].includes(role)) return;
+  try {
+    if (localStorage.getItem(TZ_FLAG)) return;
+    markTimezoneChosen();
+    const tz = browserTimezone();
+    if (!tz || tz === "UTC" || tz === "Etc/UTC") return;
+    await apply();
+  } catch {}
+}
+
 async function api(method: string, path: string, body?: unknown) {
   const res = await fetch(path, {
     method,
@@ -128,6 +153,10 @@ export const useStore = create<AppState>()(
             posts: (data.posts as ScheduledPost[]).filter((p) => !deleting.has(p.brandId)),
             automationRules: (data.rules as AutomationRule[]).filter((r) => !deleting.has(r.brandId)),
             activeBrandId: brands.some((b) => b.id === active) ? active : brands[0]?.id ?? null,
+          });
+          void autoSetTimezone(data.workspace, data.role, async () => {
+            await api("PATCH", "/api/workspace", { timezone: browserTimezone() });
+            set((s) => (s.account ? { account: { ...s.account, workspace: { ...s.account.workspace, timezone: browserTimezone() } } } : {}));
           });
         } catch (err) {
           set({ loadError: err instanceof Error ? err.message : String(err) });

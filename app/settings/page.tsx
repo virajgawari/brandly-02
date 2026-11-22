@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { Button, Card, Input, PageHeader } from "@/components/ui";
-import { useStore } from "@/lib/store";
+import { useStore, markTimezoneChosen } from "@/lib/store";
 
 async function patch(body: Record<string, unknown>): Promise<boolean> {
   const res = await fetch("/api/workspace", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
@@ -169,6 +169,7 @@ function SettingsForm({ account }: { account: Account }) {
           <Button
             onClick={async () => {
               const ok = await patch({ fullName: name, ...(canEdit ? { name: wsName, timezone } : {}) });
+              if (ok && canEdit) markTimezoneChosen();
               if (ok) await hydrate();
               flash(ok);
             }}

@@ -27,7 +27,8 @@ export function imagePromptFromBrief(brief: VisualBrief | undefined, model?: Bra
       `${brief.composition ? `${brief.composition}. ` : ""}Calm, empty negative space for a headline.`,
       brief.lighting && `${brief.lighting}.`,
       guide.promptSuffix.replace(/\s+$/, ""),
-      peopleClause(guide, rand),
+      // A product shot is about the product, so never ask for (or ban) people there.
+      !brief.usesProductPhoto && peopleClause(guide, rand),
       "No text, letters, logos or watermarks, no clutter.",
     ]
       .filter(Boolean)

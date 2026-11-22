@@ -7,6 +7,7 @@ import { LiveFindings } from "@/components/onboarding/kit";
 import { runPipeline } from "@/lib/brand/client";
 import { cleanSocial } from "@/lib/brand/socials";
 import { takeQueuedInstagramLearning } from "@/lib/social/autolearn";
+import { FONT_PAIRS } from "@/lib/brand/fonts";
 import type { BrandModel } from "@/lib/brand/model";
 import type { Finding } from "@/lib/brand/stages/types";
 import type { BrandSources } from "@/lib/types";
@@ -217,7 +218,10 @@ export function InstagramSection({
                   <p className="text-[11px] uppercase tracking-wide text-text-muted">Applied to your posts</p>
                   <p className="text-sm leading-snug flex flex-wrap items-center gap-x-3 gap-y-1">
                     {sg.textColor && <span className="inline-flex items-center gap-1"><span className="size-3 rounded-full border border-border" style={{ background: sg.textColor }} />Text {sg.textColor}</span>}
-                    {sg.fontPairId && <span>Font: {sg.fontPairId}</span>}
+                    {sg.fontPairId && FONT_PAIRS.some((f) => f.id === sg.fontPairId) && (() => {
+                      const f = FONT_PAIRS.find((x) => x.id === sg.fontPairId)!;
+                      return <span>Font: {f.heading} + {f.body}</span>;
+                    })()}
                     {sg.textBox && sg.textBox !== "none" && <span>Text on a {sg.textBox}</span>}
                     {sg.peoplePct !== undefined && <span>People in {sg.peoplePct}% of images{sg.peopleStyle ? ` (${sg.peopleStyle})` : ""}</span>}
                   </p>

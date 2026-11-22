@@ -128,6 +128,14 @@ describe("generation inputs", () => {
     expect(prompt).toContain("No text");
   });
 
+  it("adds no people clause to a product-photo brief", () => {
+    const m = emptyModel("Acme", "analyse", "b1");
+    m.expression.styleGuide = { ...style, peoplePct: 100, peopleStyle: "candid" };
+    const brief = { subject: "a ceramic cup", setting: "stone table", lighting: "morning light", composition: "overhead" };
+    expect(imagePromptFromBrief({ ...brief, usesProductPhoto: false }, m, undefined, "", () => 0)).toContain("Include a person");
+    expect(imagePromptFromBrief({ ...brief, usesProductPhoto: true }, m, undefined, "", () => 0)).not.toContain("Include a person");
+  });
+
   it("puts the playbook into the prompt context", () => {
     const m = emptyModel("Acme", "analyse", "b1");
     m.voice.playbook = { ...playbook, anchors: [] };

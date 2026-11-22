@@ -24,7 +24,7 @@ type ViewMode = "month" | "week";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-text-muted/30 text-text-muted",
-  scheduled: "bg-accent/20 text-accent-light",
+  scheduled: "bg-sky-500/20 text-sky-400",
   published: "bg-success/20 text-success",
   failed: "bg-error/20 text-error",
 };
@@ -43,11 +43,14 @@ interface DraggablePostProps {
   post: ScheduledPost;
   onClick: (post: ScheduledPost) => void;
   className?: string;
+  canDrag?: boolean;
 }
 
-const DraggablePost: React.FC<DraggablePostProps> = ({ post, onClick, className }) => {
+const DraggablePost: React.FC<DraggablePostProps> = ({ post, onClick, className, canDrag = true }) => {
+  const draggable = canDrag && post.status !== "published";
   const [{ isDragging }, drag] = useDrag<DragItem, unknown, { isDragging: boolean }>(() => ({
     type: ItemTypes.POST,
+    canDrag: draggable,
     item: { id: post.id, scheduledAt: post.scheduledAt },
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
@@ -66,9 +69,9 @@ const DraggablePost: React.FC<DraggablePostProps> = ({ post, onClick, className 
         className,
         isDragging ? "opacity-50" : "opacity-100"
       )}
-      style={{ cursor: 'grab' }}
+      style={{ cursor: draggable ? 'grab' : 'pointer' }}
     >
-      <PlatformIcon platform={post.platforms[0]} size={11} /> {post.content.caption.slice(0, 20)}…
+      <PlatformIcon platform={post.platforms[0]} size={11} /> {post.content.caption.slice(0, 20)}{post.content.caption.length > 20 ? "…" : ""}
     </button>
   );
 };
@@ -105,7 +108,8 @@ const DroppableDay: React.FC<DroppableDayProps> = ({ day, children, onDropPost, 
 
 
 export default function CalendarPage() {
-  const { getActiveBrand, posts, updatePost, deletePost, addPost } = useStore();
+  const { getActiveBrand, posts, updatePost, deletePost, addPost, hydrate, hydrated, account } = useStore();
+  const canEdit = !account || ["owner", "admin", "editor"].includes(account.role ?? "");
   const brand = getActiveBrand();
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -113,30 +117,31 @@ export default function CalendarPage() {
   const [publishing, setPublishing] = useState(false);
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
   useEffect(() => setPublishMessage(null), [selectedPost?.id]);
+  // Keep the detail panel in step with the store (status changes after publishing, deletes).
+  const live = selectedPost ? posts.find((p) => p.id === selectedPost.id) ?? null : null;
+  useEffect(() => {
+    if (selectedPost && live && (live.status !== selectedPost.status || live.scheduledAt !== selectedPost.scheduledAt)) setSelectedPost(live);
+  }, [live, selectedPost]);
 
-  // Sends the post to /api/publish (n8n → Postiz). With `schedule`, Postiz posts it at
-  // post.scheduledAt on its own, so the browser doesn't need to be open.
-  const publishNow = async (post: ScheduledPost, schedule = false) => {
+  // Publishes the stored post now. Future posts go out by themselves when their time comes (cron),
+  // so there is no separate "schedule" step here.
+  const publishNow = async (post: ScheduledPost) => {
     setPublishing(true);
     setPublishMessage(null);
     try {
       const res = await fetch("/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(schedule ? { post, publishAt: post.scheduledAt } : { post }),
+        body: JSON.stringify({ postId: post.id }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       const results: { platform: string; ok: boolean; error?: string }[] = data.results ?? [];
-      const ok = res.ok && ["published", "scheduled", "partial"].includes(data.status);
-      const status = !ok ? "failed" : data.status === "scheduled" ? "scheduled" : "published";
-      updatePost(post.id, { status });
-      setSelectedPost({ ...post, status });
-      const done = data.status === "scheduled" ? "scheduled in Postiz" : "published";
       setPublishMessage(
         results.length
-          ? results.map((r) => `${r.platform}: ${r.ok ? done : r.error}`).join("\n")
-          : data.error ?? `HTTP ${res.status}`
+          ? results.map((r) => `${r.platform}: ${r.ok ? "published" : r.error}`).join(", ")
+          : data.error ?? (res.ok ? "Published." : `HTTP ${res.status}`)
       );
+      await hydrate(); // the server owns the post's status
     } catch (err) {
       setPublishMessage(err instanceof Error ? err.message : String(err));
     }
@@ -168,27 +173,23 @@ export default function CalendarPage() {
     }
   };
 
-  const handleDropPost = useCallback((postId: string, newDate: Date) => {
-    const postToUpdate = brandPosts.find(p => p.id === postId);
-    if (postToUpdate) {
-      // Preserve the time component of the original scheduledAt if dropping on the same day
-      // Otherwise, set to a default time for the new day (e.g., 9 AM)
-      const originalScheduledAt = parseISO(postToUpdate.scheduledAt);
-      const updatedScheduledAt = newDate;
-
-      if (isSameDay(originalScheduledAt, newDate)) {
-        updatedScheduledAt.setHours(originalScheduledAt.getHours());
-        updatedScheduledAt.setMinutes(originalScheduledAt.getMinutes());
-      } else {
-        updatedScheduledAt.setHours(9); // Default to 9 AM for new days
-        updatedScheduledAt.setMinutes(0);
-      }
-
-      updatePost(postId, { scheduledAt: updatedScheduledAt.toISOString() });
+  const handleDropPost = useCallback((postId: string, day: Date) => {
+    const post = brandPosts.find((p) => p.id === postId);
+    if (!post || post.status === "published" || !canEdit) return;
+    // Move to the new day, keep the time of day. Never mutate the day cell's Date.
+    const old = parseISO(post.scheduledAt);
+    const next = new Date(day);
+    next.setHours(old.getHours(), old.getMinutes(), 0, 0);
+    if (isSameDay(old, next)) return;
+    if (post.status !== "draft" && next.getTime() < Date.now()) {
+      setPublishMessage("Pick a time in the future for a scheduled post.");
+      return;
     }
-  }, [brandPosts, updatePost]);
+    updatePost(postId, { scheduledAt: next.toISOString() });
+  }, [brandPosts, updatePost, canEdit]);
 
   if (!brand) {
+    if (!hydrated) return <AppShell><div className="p-8"><div className="h-96 rounded-xl bg-surface animate-pulse" /></div></AppShell>;
     return (
       <AppShell>
         <div className="p-8">
@@ -235,6 +236,7 @@ export default function CalendarPage() {
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Calendar */}
             <div className="lg:col-span-3">
+              {!hydrated && <div className="h-96 rounded-xl bg-surface animate-pulse mb-4" aria-label="Loading posts" />}
               {/* Nav */}
               <div className="flex items-center justify-between mb-4">
                 <button onClick={() => nav("prev")} className="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center text-text-muted hover:text-text transition-colors">
@@ -294,6 +296,7 @@ export default function CalendarPage() {
                               key={p.id}
                               post={p}
                               onClick={() => setSelectedPost(p)}
+                              canDrag={canEdit}
                             />
                           ))}
                           {dayPosts.length > 2 && (
@@ -338,6 +341,7 @@ export default function CalendarPage() {
                               key={p.id}
                               post={p}
                               onClick={() => setSelectedPost(p)}
+                              canDrag={canEdit}
                               className="p-2 rounded-lg"
                             />
                           ))}
@@ -418,36 +422,9 @@ export default function CalendarPage() {
                     <p className="text-[11px] whitespace-pre-line text-text-muted mb-3">{publishMessage}</p>
                   )}
                   <div className="flex gap-2 flex-wrap">
-                    {selectedPost.status !== "published" && (
-                      <Button
-                        size="sm"
-                        loading={publishing}
-                        onClick={() => publishNow(selectedPost)}
-                      >
-                        Publish now
-                      </Button>
-                    )}
-                    {selectedPost.status !== "published" &&
-                      parseISO(selectedPost.scheduledAt).getTime() > Date.now() + 60_000 && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          loading={publishing}
-                          onClick={() => publishNow(selectedPost, true)}
-                        >
-                          Schedule in Postiz
-                        </Button>
-                      )}
-                    {selectedPost.status === "scheduled" && (
-                      <Button
-                        variant="success"
-                        size="sm"
-                        onClick={() => {
-                          updatePost(selectedPost.id, { status: "published" });
-                          setSelectedPost({ ...selectedPost, status: "published" });
-                        }}
-                      >
-                        ✓ Mark Published
+                    {canEdit && selectedPost.status !== "published" && (
+                      <Button size="sm" loading={publishing} onClick={() => publishNow(selectedPost)}>
+                        {selectedPost.status === "failed" ? "Retry publishing" : "Publish now"}
                       </Button>
                     )}
                     {selectedPost.mediaUrl && (
@@ -455,7 +432,7 @@ export default function CalendarPage() {
                         Download
                       </Button>
                     )}
-                    <Button
+                    {canEdit && <Button
                       variant="secondary"
                       size="sm"
                       onClick={() => {
@@ -472,8 +449,8 @@ export default function CalendarPage() {
                       }}
                     >
                       Duplicate
-                    </Button>
-                    <Button
+                    </Button>}
+                    {canEdit && <Button
                       variant="danger"
                       size="sm"
                       onClick={() => {
@@ -482,7 +459,7 @@ export default function CalendarPage() {
                       }}
                     >
                       Delete
-                    </Button>
+                    </Button>}
                   </div>
                   {selectedPost.status === "published" && <PostMetricsForm postId={selectedPost.id} platforms={selectedPost.platforms} />}
                 </Card>

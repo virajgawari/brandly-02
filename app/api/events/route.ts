@@ -3,7 +3,7 @@ import { errorResponse, requireSession } from "@/lib/db/session";
 
 const CONTENT_EVENTS = new Set([
   "generated", "regenerated", "edited", "copied", "scheduled", "rescheduled",
-  "published", "discarded", "variant_selected", "image_generated",
+  "published", "discarded", "variant_selected", "image_generated", "patched",
 ]);
 
 interface EventIn {

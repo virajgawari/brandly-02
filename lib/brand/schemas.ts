@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FONT_PAIRS } from "./fonts";
 import { AGE_GROUPS, MOMENTS, MOTIVATIONS } from "./model";
 import { looksLikeUnitPersonality, clampPct, signedToTone, unitToPct, TONE_KEYS } from "./scale";
 import { BUSINESS_MODEL_KEYS, INDUSTRY_KEYS, PRIMARY_GOAL_KEYS } from "./taxonomy";
@@ -124,6 +125,41 @@ export const ExtractSchema = z.object({
   cites: CitesSchema,
 });
 export type ExtractResult = z.infer<typeof ExtractSchema>;
+
+/** Output of the vision call over the top posts' images. */
+export const StyleGuideSchema = z.object({
+  medium: str,
+  palette: str,
+  composition: str,
+  typography: str,
+  promptSuffix: str,
+  /** Share (0-100) of the sampled images that carry overlaid text or graphics. Optional. */
+  textOnImagePct: z.coerce.number().min(0).max(100).optional().catch(undefined),
+  /** Dominant on-image text colour as #hex. Invalid values are dropped. */
+  textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().catch(undefined),
+  /** Must be an id from FONT_PAIRS; anything else is dropped. */
+  fontPairId: z.string().refine((v) => FONT_PAIRS.some((f) => f.id === v)).optional().catch(undefined),
+  textBox: z.enum(["none", "pill", "box"]).optional().catch(undefined),
+  peoplePct: z.coerce.number().min(0).max(100).optional().catch(undefined),
+  peopleStyle: z.string().max(120).optional().catch(undefined),
+});
+
+/** Output of the copy call over the cleaned posts. Anchors are added in code, not by the model. */
+export const PlaybookSchema = z.object({
+  pillars: z.array(z.object({ name: str, pct: z.coerce.number().catch(0) })).catch([]),
+  adjectives: strArr,
+  neverSoundsLike: str,
+  hookFormulas: strArr,
+  formatting: z
+    .object({ avgWords: z.coerce.number().catch(0), lineBreaks: str, emoji: str })
+    .catch({ avgWords: 0, lineBreaks: "", emoji: "" }),
+  cta: str,
+  hashtagRule: str,
+  blacklist: strArr,
+  /** Share of posts per format id (see FORMATS in lib/content/brief.ts). */
+  formatMix: z.array(z.object({ format: str, pct: z.coerce.number().catch(0) })).catch([]),
+});
+export type PlaybookResult = z.infer<typeof PlaybookSchema>;
 
 export const ContentSystemSchema = z.object({
   pillars: strArr,

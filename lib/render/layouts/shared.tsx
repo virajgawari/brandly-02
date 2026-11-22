@@ -4,6 +4,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { LayoutId, LayoutKit } from "@/lib/brand/model";
 import { contrastRatio, readableOn } from "@/lib/brand/color";
+import { enforceContrast, fitTextToBox } from "../layout-qa";
 
 export interface LayoutColors {
   primary: string;
@@ -22,12 +23,18 @@ export interface LayoutProps {
   logo?: string;
   /** Average tone of the logo's visible pixels, to keep it visible on the background. */
   logoTone?: "light" | "dark";
+  /** The logo is an opaque white rectangle: it gets a clean pill on non-white cards. */
+  logoBoxed?: boolean;
   /** Data URI of the photo, if the layout uses one. */
   photo?: string;
   /** Product carousel cover: the product photos shown in the collage. */
   photos?: string[];
   /** Carousel slide without the step number (the product carousel's closing slide). */
   noNumber?: boolean;
+  /** Brand's learned on-image text colour (#hex) from its real posts. Applied only where it stays readable. */
+  textColor?: string;
+  /** Learned background behind on-image text over photos. */
+  textBox?: "none" | "pill" | "box";
   headline: string;
   subline?: string;
   cta?: string;
@@ -57,13 +64,43 @@ export function headlineSize(text: string, width: number, max = 104): number {
   return Math.round((base * width) / 1080);
 }
 
+const isLight = (hex: string) => contrastRatio(hex, "#000000") > contrastRatio(hex, "#FFFFFF");
+
+/**
+ * The brand's learned text colour in place of the layout's default, but only when it
+ * sits on the same side (light or dark) and keeps strong contrast, so a learned colour
+ * never makes a post unreadable. `bg` is the real background when the layout knows it.
+ */
+export function pickText(p: LayoutProps, color: string, bg?: string): string {
+  const t = p.textColor;
+  if (!t || !color.startsWith("#")) return color;
+  if (isLight(t) !== isLight(color)) return color;
+  const against = bg ?? (isLight(color) ? "#000000" : "#FFFFFF");
+  return contrastRatio(t, against) >= (bg ? 4.5 : 7) ? t : color;
+}
+
+/** Pill or box behind text that sits over a photo. Undefined when the brand puts text straight on the photo. */
+export function textBoxStyle(p: LayoutProps): CSSProperties | undefined {
+  if (!p.textBox || p.textBox === "none") return undefined;
+  // Over a photo the layout's text is light, so the box is always a dark one.
+  return {
+    display: "flex",
+    flexDirection: "column",
+    alignSelf: "flex-start",
+    background: "rgba(0,0,0,0.62)",
+    padding: p.textBox === "pill" ? "26px 46px" : "36px 44px",
+    borderRadius: p.textBox === "pill" ? 56 : Math.min(p.kit.radius, 24),
+  };
+}
+
 /** Background, text and accent colours for text-led layouts. */
 export function scheme(p: LayoutProps) {
   const bg = p.colors[p.kit.background];
-  const fg = readableOn(bg);
+  const fg = pickText(p, readableOn(bg), bg);
   // Accent must stand out on the background; fall back through the palette.
   const candidates = [p.colors.accent, p.colors.primary, p.colors.secondary, p.colors.neutral].filter((c) => c !== bg);
-  const accent = candidates.find((c) => contrastRatio(c, bg) >= 2.2) ?? fg;
+  // Accent is used for big display text (stat, quote mark): WCAG 3:1, stepping its lightness if no palette colour clears it.
+  const accent = candidates.find((c) => contrastRatio(c, bg) >= 3) ?? enforceContrast(candidates[0] ?? fg, bg, { role: "display", sizePx: 48 }).color;
   const muted = fg === "#FFFFFF" ? "rgba(255,255,255,0.78)" : "rgba(17,17,17,0.72)";
   return { bg, fg, accent, muted, onAccent: readableOn(accent) };
 }
@@ -84,6 +121,14 @@ export function Logo({ p, color, size = 64, style }: { p: LayoutProps; color: st
     const bgIsLight = color !== "#FFFFFF";
     const needsChip = p.logoTone ? (p.logoTone === "light") === bgIsLight : false;
     const img = <img src={p.logo} height={size} style={{ height: size, maxWidth: size * 4, objectFit: "contain" }} />;
+    // An opaque white logo box on a coloured card: seat it in a deliberate pill instead of a stray rectangle.
+    if (p.logoBoxed) {
+      return (
+        <div style={{ display: "flex", padding: `${Math.round(size * 0.16)}px ${Math.round(size * 0.28)}px`, borderRadius: 999, background: "#FFFFFF", ...style }}>
+          {img}
+        </div>
+      );
+    }
     if (!needsChip) return <div style={{ display: "flex", ...style }}>{img}</div>;
     return (
       <div style={{ display: "flex", padding: Math.round(size * 0.18), borderRadius: Math.min(p.kit.radius, size / 3), background: bgIsLight ? "#1A1A1A" : "#FFFFFF", ...style }}>
@@ -128,7 +173,10 @@ export function AccentMark({ p, color }: { p: LayoutProps; color: string }) {
 export function Headline({ p, color, size, style }: { p: LayoutProps; color: string; size?: number; style?: CSSProperties }) {
   const text = applyCase(p.headline, p.kit.headlineCase);
   // Capitals are wider: shrink explicit sizes too.
-  const fs = size ? Math.round(size * (p.kit.headlineCase === "upper" ? 0.86 : 1)) : headlineSize(text, p.width);
+  const want = size ? Math.round(size * (p.kit.headlineCase === "upper" ? 0.86 : 1)) : headlineSize(text, p.width);
+  // Never clip: step the size down until the wrapped headline fits its slot.
+  const fit = fitTextToBox(text, { boxW: p.width - PAD * 2, boxH: p.height * 0.4, minPx: Math.round(want * 0.5), maxPx: want, lineHeight: 1.08 });
+  const fs = fit.px;
   return (
     <div
       style={{
@@ -138,11 +186,11 @@ export function Headline({ p, color, size, style }: { p: LayoutProps; color: str
         fontSize: fs,
         lineHeight: 1.08,
         letterSpacing: p.kit.headlineCase === "upper" ? 1 : -1,
-        color,
+        color: pickText(p, color),
         ...style,
       }}
     >
-      {text}
+      {fit.text}
     </div>
   );
 }

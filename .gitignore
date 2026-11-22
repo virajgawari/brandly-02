@@ -31,3 +31,5 @@ next-env.d.ts
 .vercel
 .env*
 !.env.example
+graphify-out/
+.claude/

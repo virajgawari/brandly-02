@@ -1,15 +1,17 @@
 // One prompt builder for every post generator (composer, automation, n8n).
+import { bestTimeLabel } from "@/lib/social/stats";
 import { z } from "zod";
-import type { BrandModel } from "@/lib/brand/model";
+import type { BrandModel, Playbook } from "@/lib/brand/model";
 import { toPromptContext } from "@/lib/brand/projection";
 import { GeneratedPostSchema } from "@/lib/brand/schemas";
 import { CONTENT_TEMPLATES, PLATFORM_LIMITS } from "@/lib/templates";
 import type { BrandDNA, CarouselSlide, GeneratedPost, Platform, ProductRef, TemplateCategory } from "@/lib/types";
 import { AI_CLICHES, briefBlock, type PostBrief } from "./brief";
 import { historyBlock, type ContentHistory } from "./history";
+import { hashtagRange, rangeText } from "./hashtags";
 import { imagePromptFromBrief } from "./visual";
 
-export const POST_PROMPT_VERSION = "generate-post@5";
+export const POST_PROMPT_VERSION = "generate-post@7";
 /** Higher than the default 0.7: posts should vary, brand facts come from the context. */
 export const POST_TEMPERATURE = 0.9;
 
@@ -42,11 +44,32 @@ export interface PostRequest {
   triggerContext?: string;
 }
 
+/** What the brand's real feed does, as writing rules. Empty when nothing was learned. */
+export function feedRules(playbook?: Playbook): string[] {
+  if (!playbook) return [];
+  const f = playbook.formatting;
+  const st = playbook.postStats;
+  const out = [
+    f?.avgWords ? `- Length: about ${f.avgWords} words in the caption (the brand's real average).` : "",
+    f?.lineBreaks ? `- Line breaks and sentences: ${f.lineBreaks}` : "",
+    f?.emoji ? `- Emoji: ${f.emoji}` : "",
+    playbook.cta ? `- Closing: ${playbook.cta}` : "",
+    playbook.neverSoundsLike ? `- Never sound like: ${playbook.neverSoundsLike}` : "",
+    playbook.adjectives?.length ? `- Sounds: ${playbook.adjectives.slice(0, 5).join(", ")}.` : "",
+    st?.hashtags.top.length ? `- Hashtags it reuses: ${st.hashtags.top.slice(0, 6).join(" ")}.` : "",
+    st && st.sampleSize >= 8 ? `- Its ${st.bestLength}-caption posts get the most engagement (${st.words.p25}-${st.words.p75} words is its usual range).` : "",
+  ].filter(Boolean);
+  return out.length ? [`THE BRAND'S OWN HABITS (learned from its real posts; they outrank generic style advice):`, ...out] : [];
+}
+
 export function buildPostPrompt(r: PostRequest): { system: string; user: string; brandContext: string } {
   const t = CONTENT_TEMPLATES.find((x) => x.id === r.template);
   const platforms = r.platforms.length ? r.platforms : (["instagram"] as Platform[]);
   const tags = r.model?.content.hashtagClusters ?? r.dna?.hashtag_clusters ?? [];
+  const tagRange = hashtagRange(r.model);
   const samples = r.model?.voice.sampleLines ?? [];
+  const playbook = r.model?.voice.playbook;
+  const anchors = (playbook?.anchors ?? []).slice(0, 5);
   const user = [
     briefBlock(r.brief),
     "",
@@ -62,19 +85,32 @@ export function buildPostPrompt(r: PostRequest): { system: string; user: string;
     "",
     `WRITING RULES:`,
     `- Never use these words or phrases: ${bannedWords(r.model).join(", ")}.`,
-    `- No emoji as the first character. No "Did you know". No rhetorical triple lists ("X, Y and Z").`,
-    `- Short paragraphs, one idea per post. Use ONLY details that appear in the brand context, topic or extra context above.`,
+    `- No emoji as the first character. No "Did you know".${playbook ? "" : ' No rhetorical triple lists ("X, Y and Z").'}`,
+    !playbook && `- Short paragraphs, one idea per post.`,
+    `- Use ONLY details that appear in the brand context, topic or extra context above.`,
     `- Never invent facts: no made-up people, customers, places, estates, tasting notes, origins, ingredients, numbers, prices, discounts, promo codes, deadlines or shipping terms. If a detail is not given, write around it.`,
     `- The brand's do/don't rules (such as naming an origin) apply only where the facts exist; when they do not, skip the rule.`,
     businessLine(r.model) && `- ${businessLine(r.model)}`,
-    samples.length && `- Match the rhythm of these brand lines: ${samples.slice(0, 3).map((s) => `"${s}"`).join(" ")}`,
-    `- Write 2-3 sentences that could sit next to the brand's EXAMPLE LINES without standing out.`,
-    `- Hashtags: 5-10, mostly from: ${tags.length ? tags.join(" ") : "niche tags for this category"}. Include the #.`,
+    ...(anchors.length
+      ? [
+          `STYLE ANCHORS (real top posts by this brand; match their exact rhythm, spacing and tone):`,
+          ...anchors.map((a, i) => `Example ${i + 1}: "${a}"`),
+          `- Match the average word count and line-break structure of the examples. Use emoji only at the density the examples use. Do not sound more enthusiastic or salesy than they do.`,
+          ...feedRules(playbook),
+        ]
+      : [
+          samples.length && `- Match the rhythm of these brand lines: ${samples.slice(0, 3).map((s) => `"${s}"`).join(" ")}`,
+          `- Write 2-3 sentences that could sit next to the brand's EXAMPLE LINES without standing out.`,
+          ...feedRules(playbook),
+        ]),
+    tagRange.max === 0
+      ? `- Hashtags: none. Return an empty hashtags array.`
+      : `- Hashtags: ${rangeText(tagRange)}${r.model?.voice.playbook?.hashtagRule ? ` (the brand's rule: ${r.model.voice.playbook.hashtagRule})` : ""}, mostly from: ${tags.length ? tags.join(" ") : "niche tags for this category"}. Include the #.`,
     "",
     `Return JSON:
 {
   "caption": "the main caption (Instagram style). Do NOT put hashtags or the call to action in it; they are separate fields",
-  "hashtags": ["#tag", ...5-10],
+  "hashtags": ["#tag", ...${rangeText(tagRange)} tags],
   "cta": "one clear call to action sentence",
   "headline": "max 8 words, for the image",
   "subline": "max 12 words, supports the headline (can be empty)",
@@ -119,7 +155,8 @@ export function buildRevisePrompt(user: string, post: GeneratedPost, failures: s
 export function postSchemaFor(model?: BrandModel) {
   const banned = bannedWords(model).map((w) => w.toLowerCase());
   return GeneratedPostSchema.superRefine((p, ctx) => {
-    if (p.hashtags.length < 5) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["hashtags"], message: `provide 5-10 hashtags, you gave ${p.hashtags.length}` });
+    const range = hashtagRange(model);
+    if (p.hashtags.length < range.min) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["hashtags"], message: `provide ${rangeText(range)} hashtags, you gave ${p.hashtags.length}` });
     const text = `${p.caption} ${p.headline}`.toLowerCase();
     const hits = banned.filter((w) => w.length > 3 && new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
     if (hits.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["caption"], message: `remove the banned phrases: ${hits.join(", ")}` });
@@ -185,9 +222,10 @@ export function finalizePost(raw: unknown, r: Pick<PostRequest, "model" | "dna" 
   const written = p?.slides ?? loose.slides ?? [];
   return {
     caption: cleanCaption(p?.caption ?? loose.caption!, cta),
-    hashtags: dedupeTags(p?.hashtags ?? (loose.hashtags ?? []).slice(0, 10)),
+    // Never show more tags than the brand's playbook allows, even if the model over-delivers.
+    hashtags: dedupeTags(p?.hashtags ?? (loose.hashtags ?? []).slice(0, 10)).slice(0, hashtagRange(r.model).max),
     cta,
-    bestTimeToPost: p?.bestTimeToPost || loose.bestTimeToPost || "",
+    bestTimeToPost: bestTimeLabel(r.model?.voice.playbook?.postStats) || p?.bestTimeToPost || loose.bestTimeToPost || "",
     postType: r.brief.carousel ? "Carousel" : cleanPostType(p?.postType || loose.postType),
     platformVariants: Object.fromEntries(Object.entries(variants).filter(([k, v]) => (r.platforms as string[]).includes(k) && typeof v === "string" && v.trim() !== "" && !/^(same as|see|identical to|as above)\b/i.test(v.trim()))),
     imagePrompt: imagePromptFromBrief(vb, r.model, r.dna, loose.imagePrompt ?? headline),

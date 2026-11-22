@@ -12,7 +12,7 @@ export const IdeaSchema = z.object({
 export const IdeasSchema = z.object({ ideas: z.array(IdeaSchema).min(1).max(8) });
 export type PostIdea = z.infer<typeof IdeaSchema>;
 
-export const IDEAS_PROMPT_VERSION = "ideas@1";
+export const IDEAS_PROMPT_VERSION = "ideas@2";
 export const IDEA_COUNT = 4;
 
 export const IDEAS_SYSTEM = `You suggest social media post ideas for one brand. Each idea is a specific post the owner could publish this week, not a generic theme.
@@ -38,6 +38,14 @@ export function buildIdeasPrompt(model: BrandModel, recentOpenings: string[] = [
     model.content?.pillars?.length && `Content pillars: ${model.content.pillars.join("; ")}`,
     s.differentiators?.length && `What sets it apart: ${s.differentiators.slice(0, 3).join("; ")}`,
   ].filter(Boolean);
+  const pb = model.voice?.playbook;
+  if (pb) {
+    if (pb.pillars?.length) lines.push(`What their real Instagram posts about (share of posts): ${pb.pillars.map((p) => `${p.name} ${p.pct}%`).join("; ")}. Spread the ideas across these in that proportion.`);
+    if (pb.anchors?.length) {
+      const top = pb.anchors.slice(0, 3).map((a, i) => `${i + 1}. ${a.replace(/\s+/g, " ").slice(0, 160)}`).join("\n");
+      lines.push(`Their best real posts (ideas should feel like these, not copy them):\n${top}`);
+    }
+  }
   if (recentOpenings.length) {
     lines.push(`Recent posts (do not repeat these angles):\n${recentOpenings.slice(0, 10).map((o, i) => `${i + 1}. ${o}`).join("\n")}`);
   }

@@ -54,10 +54,23 @@ function numbersIn(text: string, facts: string): string[] {
 function namesIn(text: string, facts: string): string[] {
   const out: string[] = [];
   for (const m of text.matchAll(/\b[A-Z][a-z]{2,}\b/g)) {
-    // Sentence start: only spaces, quotes, emoji or brackets since the start or the last . ! ? … or line break.
-    if (/(^|[.!?…\n])[^\p{L}\p{N}]*$/u.test(text.slice(0, m.index))) continue;
+    // Sentence start: only spaces, quotes, emoji or brackets since the start or the last . ! ? … : or line break.
+    if (/(^|[.!?…:\n])[^\p{L}\p{N}]*$/u.test(text.slice(0, m.index))) continue;
     if (COMMON_NAMES.has(m[0].toLowerCase()) || inFacts(facts, m[0])) continue;
     out.push(m[0]);
+  }
+  return out;
+}
+
+/** Quoted speech of 4+ words that is not in the facts: an invented testimonial. */
+function quotesIn(text: string, facts: string): string[] {
+  const out: string[] = [];
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  for (const m of text.matchAll(/[“"]([^”"\n]{12,200})[”"]/g)) {
+    const q = m[1];
+    if (q.trim().split(/\s+/).length < 4) continue;
+    if (norm(facts).includes(norm(q))) continue;
+    out.push(`quote "${q.trim().slice(0, 40)}…"`);
   }
   return out;
 }
@@ -75,6 +88,7 @@ export function groundingIssues(post: GroundedPost, facts: string): string[] {
   for (const m of all.matchAll(/\b[A-Z]{5,}\b/g)) if (!inFacts(f, m[0])) found.add(m[0]);
   for (const m of all.matchAll(CLAIMS)) if (!f.toLowerCase().includes(m[0].toLowerCase())) found.add(m[0]);
   for (const n of namesIn(loose, f)) found.add(n);
+  for (const q of quotesIn(loose, f)) found.add(q);
   return [...found].slice(0, 8);
 }
 

@@ -5,14 +5,15 @@ import { STAGES, runStages } from "@/lib/brand/pipelines";
 import type { BrandModel } from "@/lib/brand/model";
 import { friendlyError } from "@/lib/errors";
 import { llmScope } from "@/lib/db/llm-scope";
-import { errorResponse, requireSession } from "@/lib/db/session";
+import { errorResponse } from "@/lib/db/session";
+import { requireAi } from "@/lib/db/budget";
 
 // Runs one stage synchronously. Body: { model: BrandModel, input?: {...} }
 // Response: { model, findings, issues, applied, skippedLocked }
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string; stageId: string }> }) {
   const { id, stageId } = await params;
   try {
-    await requireSession();
+    await requireAi();
   } catch (err) {
     return errorResponse(err, "stage auth");
   }

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui";
+import { SCOREBOARD_MIN } from "@/lib/agent/stats";
 
 interface Board {
   scored: number;
@@ -53,7 +54,7 @@ export default function ScoreboardCard({ brandId }: { brandId: string }) {
         </>
       ) : (
         <p className="text-sm text-text-muted">
-          {b.scored} of 6 posts have both a score and numbers. Add likes, comments and reach to your published posts to see how the check holds up.
+          This check needs {SCOREBOARD_MIN} posts with both a score and numbers; you have {b.scored}. Add likes, comments and reach to your published posts to see how the check holds up.
           {b.awaitingMetrics > 0 ? ` ${b.awaitingMetrics} are waiting on numbers.` : ""}
         </p>
       )}

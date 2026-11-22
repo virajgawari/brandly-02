@@ -46,7 +46,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function withLlmContext<T>(ctx: Omit<LlmContext, "calls"> & { calls?: LlmCallRecord[] }, fn: () => Promise<T>): Promise<T> {
   const parent = store.getStore();
   const brandId = ctx.brandId && UUID.test(ctx.brandId) ? ctx.brandId : undefined;
-  return store.run({ ...parent, ...ctx, brandId: brandId ?? parent?.brandId, calls: parent?.calls ?? ctx.calls ?? [] }, fn);
+  const defined = Object.fromEntries(Object.entries(ctx).filter(([, v]) => v !== undefined)); // undefined must not wipe the parent's workspaceId
+  return store.run({ ...parent, ...defined, feature: ctx.feature, brandId: brandId ?? parent?.brandId, calls: parent?.calls ?? ctx.calls ?? [] }, fn);
 }
 
 /** Runs fn with a different `feature` label (e.g. one per pipeline stage). */

@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { PIPELINES, runStages, type PipelineId } from "@/lib/brand/pipelines";
 import { friendlyError } from "@/lib/errors";
 import { emptyModel, type BrandModel, type BrandPhoto } from "@/lib/brand/model";
-import { errorResponse, requireSession } from "@/lib/db/session";
+import { errorResponse } from "@/lib/db/session";
+import { requireAi } from "@/lib/db/budget";
 import { withLlmContext } from "@/lib/llm-log";
 import { attachSourceMedia } from "@/lib/brand/photos";
+import { loadSocialInput } from "@/lib/social/store";
 import { saveBrandVersion } from "@/lib/db/brands";
 import { saveWebsiteEvidence } from "@/lib/db/evidence";
 import type { PageMeasures } from "@/lib/brand/stages/measure";
@@ -17,6 +19,7 @@ export const maxDuration = 120;
 // as newline-delimited JSON, so it works on serverless hosts where a separate
 // "poll the job" request could land on a different instance.
 //   {"type":"finding","finding":{...}}   one per update
+//   {"type":"partial","model":{...}}     merged model after each stage group
 //   {"type":"done","result":{...}}       once, at the end
 //   {"type":"error","error":"..."}       once, on failure
 // Phase 1 is stateless: the browser sends the current model and gets the merged model back.
@@ -24,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   let session;
   try {
-    session = await requireSession();
+    session = await requireAi();
   } catch (err) {
     return errorResponse(err, "run auth");
   }
@@ -37,7 +40,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const pipeline = body.pipeline ?? "analyse";
   if (!(pipeline in PIPELINES)) return NextResponse.json({ error: `Unknown pipeline "${pipeline}"` }, { status: 400 });
 
-  const model = body.model ?? emptyModel(body.name?.trim() || "Untitled brand", pipeline, id);
+  // The social pipeline reads the stored scrape, never data sent by the browser.
+  if (pipeline === "social") {
+    body.input = { ...(await loadSocialInput(session.db, session.workspaceId, id)) };
+  }
+
+  const model = body.model ?? emptyModel(body.name?.trim() || "Untitled brand", pipeline === "social" ? "refine" : pipeline, id);
   // Resolve the user before streaming so every LLM call in the run is logged against them.
   const encoder = new TextEncoder();
 
@@ -49,7 +57,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       try {
         const result = await withLlmContext(
           { feature: `pipeline:${pipeline}`, workspaceId: session?.workspaceId, userId: session?.userId, brandId: id },
-          () => runStages(PIPELINES[pipeline], model, body.input ?? {}, (finding) => send({ type: "finding", finding }))
+          () => runStages(PIPELINES[pipeline], model, body.input ?? {}, (finding) => send({ type: "finding", finding }), (m) => send({ type: "partial", model: m }))
         );
         // Keep real photos and the logo in Supabase so posts can use them later.
         if (session && pipeline !== "build") {

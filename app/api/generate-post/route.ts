@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import type { GeneratePostPayload, ProductRef } from "@/lib/types";
 import { MAX_CAROUSEL_PRODUCTS } from "@/lib/content/brief";
 import { generatePost } from "@/lib/content/generate";
-import { AuthError, errorResponse, requireSession } from "@/lib/db/session";
+import { errorResponse } from "@/lib/db/session";
+import { requireAi } from "@/lib/db/budget";
+import { trustedModel } from "@/lib/db/brands";
 
 export const maxDuration = 60;
 
@@ -26,8 +28,10 @@ function validProducts(body: GeneratePostPayload): ProductRef[] | undefined {
 // with the full brand context, and chooses a layout. Runs through n8n when it is configured.
 export async function POST(req: NextRequest) {
   try {
-    await requireSession();
-    const body: GeneratePostPayload = await req.json();
+    const s = await requireAi();
+    const body: GeneratePostPayload = await req.json().catch(() => null) as GeneratePostPayload;
+    if (!body) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    body.brandModel = await trustedModel(s, body.brandModel);
     if (!body.platforms?.length) return NextResponse.json({ error: "Choose at least one platform" }, { status: 400 });
     const result = await generatePost({
       products: validProducts(body),
@@ -39,13 +43,12 @@ export async function POST(req: NextRequest) {
       topic: body.topic,
       tone: body.tone,
       additionalContext: body.additionalContext,
+      single: !!body.single,
       n8nBody: body as unknown as Record<string, unknown>,
     });
     if ("error" in result) return NextResponse.json({ error: result.error }, { status: result.status });
     return NextResponse.json(result);
   } catch (err) {
-    if (err instanceof AuthError) return errorResponse(err, "generate-post");
-    console.error("[generate-post]", err);
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Internal server error" }, { status: 500 });
+    return errorResponse(err, "generate-post");
   }
 }

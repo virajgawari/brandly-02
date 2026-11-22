@@ -8,7 +8,7 @@ import type { StageDefinition } from "./types";
 
 /** A facet needs this many texts with a quoted score before its value replaces the LLM's guess. */
 export const MIN_RATED_TEXTS = 5;
-const BUDGET_MS = 50_000;
+const BUDGET_MS = 24_000;
 
 export type RateInput = IngestOutput & { textMeasures?: TextMeasures; /** Overrides for tests. */ rateOptions?: Partial<RateOptions> };
 
@@ -27,7 +27,7 @@ export const rateStage: StageDefinition<RateInput> = {
       return { patches: [], output: {} };
     }
     try {
-      const r = await rateTexts(paras, { samples: 20, runs: 2, batchSize: 10, delayMs: 4000, deadlineMs: Date.now() + BUDGET_MS, ...input.rateOptions });
+      const r = await rateTexts(paras, { samples: 20, runs: 1, batchSize: 20, delayMs: 0, deadlineMs: Date.now() + BUDGET_MS, ...input.rateOptions });
       const usable = FACETS.filter((f) => (r.ratings[f]?.n ?? 0) >= MIN_RATED_TEXTS);
       const measures: Measures | undefined = input.textMeasures
         ? {

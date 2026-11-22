@@ -112,7 +112,7 @@ Return JSON with exactly these keys:
   "oneLiner": "what the brand is, in under 15 words",
   "offering": "what they sell, plain words",
   "category": "market category",
-  "industry": one of ${JSON.stringify(INDUSTRY_KEYS)},
+  "industry": one of ${JSON.stringify(INDUSTRY_KEYS)} (finance, trading, banking, insurance and advisory are professional_services; b2b_saas only if they sell software to other businesses),
   "businessModel": one of ${JSON.stringify(BUSINESS_MODEL_KEYS)},
   "primaryGoal": the most likely marketing goal, one of ${JSON.stringify(PRIMARY_GOAL_KEYS)},
   "problem": "customer problem they solve",

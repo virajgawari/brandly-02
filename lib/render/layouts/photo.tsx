@@ -2,19 +2,31 @@
 import { readableOn } from "@/lib/brand/color";
 import { AccentMark, CornerLogo, Cta, edgePad, Frame, Headline, Logo, logoSpace, PAD, Photo, scheme, Subline, textBoxStyle, type LayoutProps } from "./shared";
 
-/** Photo on top, solid brand band with the headline below. */
+/** Photo fills the frame; the headline sits directly on its calm lower area with only a soft fade, no card or band. */
 export function PhotoBand(p: LayoutProps) {
   const s = scheme(p);
-  const bandH = Math.round(p.height * 0.4);
   return (
-    <Frame bg={s.bg} style={{ flexDirection: "column" }}>
-      <Photo p={p} style={{ width: p.width, height: p.height - bandH }} />
-      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", height: bandH, padding: `0 ${PAD}px`, paddingBottom: logoSpace(p, "bottom") * 0.7, position: "relative" }}>
-        <div style={{ display: "flex", position: "absolute", top: -7, left: PAD, width: 160, height: 14, background: s.accent, borderRadius: Math.min(p.kit.radius, 7) }} />
-        <Headline p={p} color={s.fg} size={Math.min(84, Math.round(5200 / Math.max(p.headline.length, 20)) + 20)} />
-        <Subline p={p} color={s.muted} size={32} />
+    <Frame bg="#111111">
+      <Photo p={p} style={{ position: "absolute", top: 0, left: 0, width: p.width, height: p.height }} />
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: p.width,
+          height: p.height,
+          backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0) 52%, rgba(0,0,0,0.55) 100%)",
+        }}
+      />
+      <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", width: "100%", height: "100%", padding: PAD, paddingBottom: PAD + logoSpace(p, "bottom") }}>
+        <div style={{ display: "flex", width: 72, height: 6, marginBottom: 28, background: s.accent === "#111111" ? p.colors.accent : s.accent, borderRadius: 3 }} />
+        <div style={{ display: "flex", flexDirection: "column", ...textBoxStyle(p) }}>
+          <Headline p={p} color="#FFFFFF" size={Math.min(92, Math.round(5200 / Math.max(p.headline.length, 20)) + 24)} />
+          <Subline p={p} color="rgba(255,255,255,0.88)" size={34} />
+        </div>
       </div>
-      <CornerLogo p={p} color={s.fg} />
+      <CornerLogo p={p} color="#FFFFFF" />
     </Frame>
   );
 }

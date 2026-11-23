@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import SavedPostCard from "@/components/catalog/SavedPostCard";
 import AppShell from "@/components/layout/AppShell";
 import { Button, EmptyState, PageHeader } from "@/components/ui";
 import { useStore } from "@/lib/store";
@@ -15,6 +16,15 @@ export default function CatalogPage() {
   const brand = useStore((s) => s.getActiveBrand());
   const saveBrandModel = useStore((s) => s.saveBrandModel);
   const backfilled = useRef<string | null>(null);
+  const [tab, setTab] = useState<"products" | "saved">("products");
+  useEffect(() => { if (new URLSearchParams(window.location.search).get("tab") === "saved") setTab("saved"); }, []);
+  const allPosts = useStore((s) => s.posts);
+  const deletePost = useStore((s) => s.deletePost);
+  const savedPosts = brand
+    ? allPosts
+        .filter((p) => p.brandId === brand.id && (p.status === "draft" || p.status === "scheduled"))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    : [];
   const [products, setProducts] = useState<Product[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -25,6 +35,7 @@ export default function CatalogPage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [heroIdx, setHeroIdx] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const deviceRef = useRef<HTMLInputElement>(null);
 
@@ -140,8 +151,10 @@ export default function CatalogPage() {
     pushToModel(await load(), gone);
   };
 
-  const edit = (p: Product) =>
+  const edit = (p: Product) => {
+    setHeroIdx(0);
     setDraft({ id: p.id, name: p.name, description: p.description, price: p.price ?? "", url: p.url ?? "", imagePaths: p.imagePaths, source: p.source });
+  };
 
   if (!brand) {
     return (
@@ -163,6 +176,27 @@ export default function CatalogPage() {
           action={<Button onClick={() => setDraft({ ...EMPTY })}>Add product</Button>}
         />
 
+        <div role="tablist" aria-label="Catalogue sections" className="inline-flex p-1 rounded-full bg-text/5 mb-6">
+          {([["products", "Products"], ["saved", `Saved posts${savedPosts.length ? ` (${savedPosts.length})` : ""}`]] as const).map(([id, label]) => (
+            <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`px-4 h-8 rounded-full text-sm font-medium transition-colors ${tab === id ? "bg-card shadow-card text-text" : "text-text-muted hover:text-text"}`}>{label}</button>
+          ))}
+        </div>
+
+        {tab === "saved" && (
+          savedPosts.length === 0 ? (
+            <div className="rounded-3xl border border-border bg-card py-14 text-center">
+              <p className="font-medium">No saved posts yet</p>
+              <p className="text-sm text-text-muted mt-1">Generate a post and press Save post to keep it here.</p>
+              <Link href="/composer" className="inline-flex items-center h-10 px-5 mt-5 rounded-full bg-text text-bg text-sm font-medium">Create a post</Link>
+            </div>
+          ) : (
+            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {savedPosts.map((p) => <SavedPostCard key={p.id} post={p} onDelete={deletePost} />)}
+            </ul>
+          )
+        )}
+
+        <div className={tab === "saved" ? "hidden" : "contents"}>
         <div className="grid gap-4 md:grid-cols-2 mb-8">
           <div
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -244,12 +278,21 @@ export default function CatalogPage() {
             </ul>
           </>
         )}
+        </div>
       </div>
 
       {draft && (
         <div role="dialog" aria-modal="true" aria-label="Product details" className="fixed inset-0 z-40 bg-black/40 grid place-items-center p-4" onClick={() => setDraft(null)}>
-          <div className="bg-card border border-border rounded-2xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold">{draft.id ? "Edit product" : "Add product"}</h2>
+          <div className="bg-card border border-border rounded-2xl w-full max-w-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-2xl font-semibold tracking-tight">{draft.id ? draft.name || "Product" : "Add product"}</h2>
+            {draft.imagePaths.length > 0 && (
+              <div className="rounded-2xl bg-text/5 overflow-hidden aspect-[4/3] grid place-items-center">
+                {urls[draft.imagePaths[Math.min(heroIdx, draft.imagePaths.length - 1)]] && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={urls[draft.imagePaths[Math.min(heroIdx, draft.imagePaths.length - 1)]]} alt={draft.name} className="w-full h-full object-contain" />
+                )}
+              </div>
+            )}
             <div>
               <label className="text-xs text-text-muted" htmlFor="p-name">Name</label>
               <input id="p-name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className={`${field} mt-1`} />
@@ -272,12 +315,12 @@ export default function CatalogPage() {
               <p className="text-xs text-text-muted">Photos</p>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mt-1">
                 {draft.imagePaths.map((path) => (
-                  <div key={path} className="relative aspect-square rounded-lg overflow-hidden bg-text/5">
+                  <div key={path} onClick={() => setHeroIdx(draft.imagePaths.indexOf(path))} className={`relative aspect-square rounded-lg overflow-hidden bg-text/5 cursor-pointer ${draft.imagePaths[Math.min(heroIdx, draft.imagePaths.length - 1)] === path ? "ring-2 ring-text" : ""}`}>
                     {urls[path] && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={urls[path]} alt="" className="w-full h-full object-cover" />
                     )}
-                    <button aria-label="Remove photo" onClick={() => setDraft({ ...draft, imagePaths: draft.imagePaths.filter((x) => x !== path) })} className="absolute top-1 right-1 bg-black/60 text-white text-xs w-5 h-5 rounded-full">×</button>
+                    <button aria-label="Remove photo" onClick={(e) => { e.stopPropagation(); setHeroIdx(0); setDraft({ ...draft, imagePaths: draft.imagePaths.filter((x) => x !== path) }); }} className="absolute top-1 right-1 bg-black/60 text-white text-xs w-5 h-5 rounded-full">×</button>
                   </div>
                 ))}
                 {draft.imagePaths.length < 6 && (
@@ -287,7 +330,12 @@ export default function CatalogPage() {
               <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { upload([...(e.target.files ?? [])]); e.target.value = ""; }} />
             </div>
             <div className="flex justify-between items-center pt-2">
-              {draft.id ? <Button variant="danger" onClick={() => archive(draft.id!)}>Archive</Button> : <span />}
+              {draft.id ? (
+                <div className="flex gap-2">
+                  <Link href={`/composer?product=${draft.id}`} className="inline-flex items-center h-10 px-5 rounded-full bg-text text-bg text-sm font-medium hover:opacity-90">Create post</Link>
+                  <Button variant="danger" onClick={() => archive(draft.id!)}>Archive</Button>
+                </div>
+              ) : <span />}
               <div className="flex gap-2">
                 <Button variant="ghost" onClick={() => setDraft(null)}>Cancel</Button>
                 <Button onClick={save} loading={saving}>Save</Button>

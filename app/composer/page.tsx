@@ -6,11 +6,12 @@ import { useEffect, useRef, useState } from "react";
 import { PlatformIcon, TemplateIcon } from "@/components/ui/icons";
 import AppShell from "@/components/layout/AppShell";
 import { useStore } from "@/lib/store";
-import { Button, Input, Textarea, Card, Chip, SectionLabel, PageHeader, EmptyState } from "@/components/ui";
+import { Button, Input, Textarea, Card, Chip, SectionLabel, EmptyState } from "@/components/ui";
 import PlatformPreview from "@/components/composer/PlatformPreview";
 import { Scorecard } from "@/components/composer/Scorecard";
 import { ScoreBadge } from "@/components/composer/ScoreBadge";
 import IdeaCards from "@/components/composer/IdeaCards";
+import ReferenceScroll from "@/components/composer/ReferenceScroll";
 import PhoneFrame from "@/components/composer/PhoneFrame";
 import { EditSection } from "@/components/composer/EditPanel";
 import type { PostIdea } from "@/lib/content/ideas";
@@ -559,7 +560,8 @@ export default function ComposerPage() {
         {!editing && (
           <div className="max-w-3xl mx-auto text-center space-y-6">
             <div className="text-left">
-              <PageHeader title="What do you want to post?" subtitle={`Writing for ${brand.name}`} />
+              <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">What do you want to post?</h1>
+              <p className="mt-3 text-lg text-text-muted">Writing for {brand.name}</p>
             </div>
             <Textarea
               label="Describe the post you want"
@@ -596,22 +598,28 @@ export default function ComposerPage() {
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
               {/* Left: phone preview */}
               <div className="lg:col-span-3 space-y-4">
-                {generating && (
+                {(generating || (post && rendering && !(rendered?.urls?.length))) && (
                   <div className="flex flex-col items-center justify-center min-h-[500px] gap-4">
-                    <div className="w-full max-w-sm space-y-3" aria-hidden>
-                      <div className="aspect-square rounded-xl bg-text/5 animate-pulse" />
-                      <div className="h-3 rounded bg-text/5 animate-pulse" />
-                      <div className="h-3 w-2/3 rounded bg-text/5 animate-pulse" />
-                    </div>
-                    <p className="text-sm text-text-muted">Writing for {selectedPlatforms.join(", ")} in {brand.name}&apos;s voice…</p>
+                    <ReferenceScroll brandId={brand.id} />
+                    <p className="text-sm text-text-muted">{generating ? `Writing for ${selectedPlatforms.join(", ")} in ${brand.name}'s voice…` : "Laying out your post…"}</p>
                   </div>
                 )}
-                {post && !generating && (
+                {post && !generating && !(rendering && !(rendered?.urls?.length)) && (
                   <>
                     <PhoneFrame>
-                      <PlatformPreview post={post} platforms={selectedPlatforms} brandDNA={brand.dna} igHandle={brand.sources.instagram || brand.name} images={rendered?.urls ?? []} imageLoading={rendering} />
+                      <PlatformPreview post={post} platforms={selectedPlatforms} brandDNA={brand.dna} igHandle={brand.sources.instagram || brand.name} images={rendered?.urls ?? []} imageLoading={rendering} brandId={brand.id} />
                     </PhoneFrame>
                     {renderError && <p className="text-xs text-error text-center">{renderError}</p>}
+                    <div className="flex items-center justify-center gap-3">
+                      {saved ? (
+                        <>
+                          <span className="text-sm text-text-muted">Saved</span>
+                          <Link href="/catalog?tab=saved" className="inline-flex items-center h-10 px-5 rounded-full bg-text text-bg text-sm font-medium hover:opacity-90">View in Catalogue</Link>
+                        </>
+                      ) : (
+                        <Button className="rounded-full px-6" loading={saving} onClick={() => schedulePost("draft")}>Save post</Button>
+                      )}
+                    </div>
                     {brand.model && <ScoreBadge post={post} model={brand.model} />}
                     <div className="max-w-[380px] mx-auto space-y-2" aria-label="Quick edits">
                       <div className="flex gap-2 flex-wrap justify-center">

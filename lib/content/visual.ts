@@ -13,6 +13,10 @@ export function peopleClause(guide: BrandModel["expression"]["styleGuide"] | und
   return pct < 20 ? "No people in the frame." : "";
 }
 
+/** Quality and composition direction for every generated photo: studio finish, subject placed to leave room for text. */
+export const STUDIO_CLAUSE =
+  "Professional studio-quality commercial photograph: razor-sharp focus on the subject, soft key light with gentle fill and subtle rim light, clean controlled backdrop, natural full colour, high-end retouching, shallow depth of field, shot on a full-frame camera with an 85mm lens. Place the subject off-centre in the upper two thirds and keep the lower third calm and uncluttered for the headline.";
+
 export function imagePromptFromBrief(brief: VisualBrief | undefined, model?: BrandModel, dna?: BrandDNA, fallback = "", rand: () => number = Math.random): string {
   if (!brief || !(brief.subject || brief.setting)) return fallback;
   const c = model?.expression.tokens.color;
@@ -27,6 +31,7 @@ export function imagePromptFromBrief(brief: VisualBrief | undefined, model?: Bra
       `${brief.composition ? `${brief.composition}. ` : ""}Calm, empty negative space for a headline.`,
       brief.lighting && `${brief.lighting}.`,
       guide.promptSuffix.replace(/\s+$/, ""),
+      STUDIO_CLAUSE,
       // A product shot is about the product, so never ask for (or ban) people there.
       !brief.usesProductPhoto && peopleClause(guide, rand),
       "No text, letters, logos or watermarks, no clutter.",
@@ -46,7 +51,8 @@ export function imagePromptFromBrief(brief: VisualBrief | undefined, model?: Bra
     colours.length && `Colour mood: ${colours.join(", ")} tones.`,
     vibe.length && `Mood: ${vibe.join(", ")}.`,
     assets.length && `Brand cues: ${assets.join("; ")}.`,
-    "Realistic, natural, not stock-photo looking. No text, letters, logos or watermarks.",
+    STUDIO_CLAUSE,
+    "No text, letters, logos or watermarks, no clutter.",
   ]
     .filter(Boolean)
     .join(" ");

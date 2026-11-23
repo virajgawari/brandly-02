@@ -8,9 +8,18 @@ import type { GeneratedPost, RenderedMedia } from "@/lib/types";
 import { imageFromStorage, imageFromUrl, imageTone, logoHasWhiteBox } from "./assets";
 import { layoutKitOf } from "./kit";
 import { museEnabled, museImage, type MuseAspect } from "./muse";
-import { topStylePaths } from "@/lib/social/store";
+import { loadFormatReferences, topStylePaths, type RefKind } from "@/lib/social/store";
 
 const STYLE_REFS = 3;
+
+/**
+ * Duotone greyscales every photo. It is only a guess from the brand's mood, so a style guide learned
+ * from the brand's real (colour) posts takes priority and photos stay in full colour.
+ */
+function duotoneFor(model: BrandModel, kit: { photoTreatment: string }): string | undefined {
+  if (kit.photoTreatment !== "duotone" || model.expression.styleGuide) return undefined;
+  return model.expression.tokens.color.primary.$value;
+}
 
 export type PhotoRef = NonNullable<RenderedMedia["photo"]>;
 
@@ -51,7 +60,7 @@ function referencePaths(model: BrandModel, post: GeneratedPost): { paths: string
 }
 
 /** Generated photo: Muse Image first (based on the brand's product photos when the post features one), then the n8n workflow. */
-export async function generatePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: MuseAspect, promptOverride?: string): Promise<PhotoRef | undefined> {
+export async function generatePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: MuseAspect, promptOverride?: string, opts?: { kind?: RefKind; slide?: number }): Promise<PhotoRef | undefined> {
   const imagePrompt = promptOverride ?? post.imagePrompt;
   if (!imagePrompt) return undefined;
 
@@ -60,11 +69,23 @@ export async function generatePhoto(session: Session | null, model: BrandModel, 
     const load = async (list: string[]) =>
       session ? (await Promise.all(list.map((p) => imageFromStorage(session.db, "images", p, { maxSide: 1024 })))).filter((x): x is string => !!x) : [];
     // Style references come first: the brand's best scraped posts, when it has a style guide.
-    const stylePaths = session && model.expression.styleGuide ? await topStylePaths(session.db, session.workspaceId, model.id, STYLE_REFS) : [];
+    let stylePaths: string[] = [];
+    if (session && model.expression.styleGuide) {
+      // Study the brand's real posts of this format; a carousel slide follows the same slide of its best carousels.
+      const kind = opts?.kind ?? "image";
+      const refs = await loadFormatReferences(session.db, session.workspaceId, model.id, kind, STYLE_REFS).catch(() => null);
+      const slide = opts?.slide ?? 0;
+      stylePaths = (refs?.imagePaths ?? []).map((p) => (kind === "carousel" ? (p[Math.min(slide, p.length - 1)] ?? p[0]) : p[0])).slice(0, STYLE_REFS);
+      if (!stylePaths.length) stylePaths = await topStylePaths(session.db, session.workspaceId, model.id, STYLE_REFS);
+    }
+    // No scraped posts yet: the brand's own lifestyle photos show its look instead.
+    if (session && !stylePaths.length) {
+      stylePaths = (model.expression.photos ?? []).filter((p) => p.role !== "product").slice(0, 2).map((p) => p.path);
+    }
     const styleRefs = await load(stylePaths);
     const productRefs = await load(paths);
     const parts = [
-      styleRefs.length && `Adopt the lighting and editorial mood of the first ${styleRefs.length} reference image${styleRefs.length > 1 ? "s" : ""}. Do not copy their subjects, and do not copy their colour treatment: render in full natural colour using the palette described in the scene below, never black and white.`,
+      styleRefs.length && `Study the first ${styleRefs.length} reference image${styleRefs.length > 1 ? "s" : ""}, which are this brand's real top posts of the same format: adopt their lighting, framing, composition and editorial mood. Do not copy their subjects, and do not copy their colour treatment: render in full natural colour using the palette described in the scene below, never black and white.`,
       productRefs.length && `Keep the product from ${styleRefs.length ? "the last reference photo" : "the reference photo"} exactly as it looks (shape, label, colour) and place it in this scene:`,
       productRefs.length || styleRefs.length ? imagePrompt : "",
       productRefs.length && notes.length && `Product: ${notes.join("; ")}.`,
@@ -98,7 +119,7 @@ export function slidePrompt(post: GeneratedPost, index: number): string {
 /** One generated photo per carousel slide, made in parallel to stay inside the route's time limit. */
 export async function generateSlidePhotos(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: MuseAspect): Promise<(PhotoRef | undefined)[]> {
   const n = post.slides?.length ?? 0;
-  return Promise.all(Array.from({ length: n }, (_, i) => generatePhoto(session, model, post, aspect, slidePrompt(post, i))));
+  return Promise.all(Array.from({ length: n }, (_, i) => generatePhoto(session, model, post, aspect, slidePrompt(post, i), { kind: "carousel", slide: i })));
 }
 
 /** A photo for every slide: missing ones reuse the photos we have, in turn. Empty when there are none. */
@@ -111,7 +132,7 @@ export function fillSlidePhotos<T>(photos: (T | undefined | null)[], count: numb
 /** Photo data URIs for Satori, with the kit's photo treatment. */
 export async function loadPhotoRefs(session: Session | null, model: BrandModel, refs: PhotoRef[]): Promise<(string | undefined)[]> {
   const kit = layoutKitOf(model)!;
-  const duotone = kit.photoTreatment === "duotone" ? model.expression.tokens.color.primary.$value : undefined;
+  const duotone = duotoneFor(model, kit);
   return Promise.all(
     refs.map((r) =>
       r.kind === "brand"
@@ -138,7 +159,7 @@ export async function resolvePhoto(session: Session | null, model: BrandModel, p
 /** Loads the photo and logo as data URIs for Satori. */
 export async function loadVisuals(session: Session | null, model: BrandModel, photo: PhotoRef | undefined) {
   const kit = layoutKitOf(model)!;
-  const duotone = kit.photoTreatment === "duotone" ? model.expression.tokens.color.primary.$value : undefined;
+  const duotone = duotoneFor(model, kit);
   const [photoUri, logoUri] = await Promise.all([
     !photo
       ? undefined
@@ -158,7 +179,7 @@ export async function loadVisuals(session: Session | null, model: BrandModel, ph
 export async function loadSlidePhotos(session: Session | null, model: BrandModel, paths: (string | undefined)[]): Promise<(string | undefined)[]> {
   if (!session) return paths.map(() => undefined);
   const kit = layoutKitOf(model)!;
-  const duotone = kit.photoTreatment === "duotone" ? model.expression.tokens.color.primary.$value : undefined;
+  const duotone = duotoneFor(model, kit);
   return Promise.all(paths.map((p) => (p ? imageFromStorage(session.db, "images", p, { maxSide: 1400, duotone }) : Promise.resolve(undefined))));
 }
 

@@ -265,8 +265,8 @@ function BrandHome({ brand }: { brand: Brand }) {
               <Label>Post playbook</Label>
               {model?.voice.playbook ? (
                 <div className="space-y-3 text-sm">
-                  <Chips items={model.voice.playbook.pillars.map((p) => `${p.name} ${p.pct}%`)} />
-                  <p className="text-text-muted">{model.voice.playbook.adjectives.join(", ")}</p>
+                  <Chips items={(model.voice.playbook.pillars ?? []).map((p) => `${p.name} ${p.pct}%`)} />
+                  <p className="text-text-muted">{(model.voice.playbook.adjectives ?? []).join(", ")}</p>
                   <p className="text-text-muted">{model.voice.playbook.cta}</p>
                 </div>
               ) : (

@@ -42,6 +42,8 @@ export interface PostRequest {
   additionalContext?: string;
   /** Automation: what triggered the post (RSS item, product page…). */
   triggerContext?: string;
+  /** Captions of the brand's real top posts in the format being made. */
+  formatExamples?: { kind: "image" | "carousel"; matched: boolean; captions: string[] };
 }
 
 /** What the brand's real feed does, as writing rules. Empty when nothing was learned. */
@@ -56,8 +58,8 @@ export function feedRules(playbook?: Playbook): string[] {
     playbook.cta ? `- Closing: ${playbook.cta}` : "",
     playbook.neverSoundsLike ? `- Never sound like: ${playbook.neverSoundsLike}` : "",
     playbook.adjectives?.length ? `- Sounds: ${playbook.adjectives.slice(0, 5).join(", ")}.` : "",
-    st?.hashtags.top.length ? `- Hashtags it reuses: ${st.hashtags.top.slice(0, 6).join(" ")}.` : "",
-    st && st.sampleSize >= 8 ? `- Its ${st.bestLength}-caption posts get the most engagement (${st.words.p25}-${st.words.p75} words is its usual range).` : "",
+    st?.hashtags?.top?.length ? `- Hashtags it reuses: ${st.hashtags.top.slice(0, 6).join(" ")}.` : "",
+    st?.words && st.sampleSize >= 8 ? `- Its ${st.bestLength}-caption posts get the most engagement (${st.words.p25}-${st.words.p75} words is its usual range).` : "",
   ].filter(Boolean);
   return out.length ? [`THE BRAND'S OWN HABITS (learned from its real posts; they outrank generic style advice):`, ...out] : [];
 }
@@ -69,7 +71,9 @@ export function buildPostPrompt(r: PostRequest): { system: string; user: string;
   const tagRange = hashtagRange(r.model);
   const samples = r.model?.voice.sampleLines ?? [];
   const playbook = r.model?.voice.playbook;
-  const anchors = (playbook?.anchors ?? []).slice(0, 5);
+  const fx = r.formatExamples;
+  const anchors = (fx?.captions.length ? fx.captions : (playbook?.anchors ?? [])).slice(0, 5);
+  const anchorLabel = fx?.matched ? `real top ${fx.kind === "carousel" ? "carousel" : "single-image"} posts by this brand` : "real top posts by this brand";
   const user = [
     briefBlock(r.brief),
     "",
@@ -93,7 +97,7 @@ export function buildPostPrompt(r: PostRequest): { system: string; user: string;
     businessLine(r.model) && `- ${businessLine(r.model)}`,
     ...(anchors.length
       ? [
-          `STYLE ANCHORS (real top posts by this brand; match their exact rhythm, spacing and tone):`,
+          `STYLE ANCHORS (${anchorLabel}; match their exact rhythm, spacing and tone):`,
           ...anchors.map((a, i) => `Example ${i + 1}: "${a}"`),
           `- Match the average word count and line-break structure of the examples. Use emoji only at the density the examples use. Do not sound more enthusiastic or salesy than they do.`,
           ...feedRules(playbook),

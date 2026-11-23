@@ -11,6 +11,7 @@ import type { BrandDNA, GeneratedPost, Platform, ProductRef, TemplateCategory } 
 import { judgeFit, JUDGE_VERSION, NOTABLE_GAP, type FitCheck } from "@/lib/judge/fit";
 import { checkRules, type RuleCheck } from "@/lib/judge/rules";
 import { PLATFORM_LIMITS } from "@/lib/templates";
+import { loadFormatReferences } from "@/lib/social/store";
 import { chooseLayout, pickBrief, type PostBrief } from "./brief";
 import { recentPosts } from "./history";
 import { hashtagRange } from "./hashtags";
@@ -122,7 +123,10 @@ export async function generatePost(input: GenerateInput): Promise<GenerateResult
     products: input.products,
     request: [input.topic, input.additionalContext, input.triggerContext].filter(Boolean).join(" "),
   });
-  const prompt = buildPostPrompt({ ...input, brief, history });
+  // Study the brand's real posts of the format we are about to make (carousel or single image).
+  const kind = brief.carousel ? "carousel" : "image";
+  const refs = session && model ? await loadFormatReferences(session.db, session.workspaceId, model.id, kind).catch(() => null) : null;
+  const prompt = buildPostPrompt({ ...input, brief, history, formatExamples: refs?.captions.length ? { kind, matched: refs.matched, captions: refs.captions } : undefined });
   const llmOpts = { task: "fast" as const, maxTokens: 2200, cachedContext: prompt.brandContext, temperature: POST_TEMPERATURE };
 
   let raw: unknown;

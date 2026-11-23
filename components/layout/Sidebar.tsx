@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import clsx from "clsx";
-import { Activity, CalendarDays, Check, ChevronsUpDown, Home, Images, LogOut, Package, Palette, PenLine, Plus, Settings, SlidersHorizontal, Workflow, Zap, Ellipsis } from "lucide-react";
+import { Activity, CalendarDays, Check, Database, ChevronsUpDown, Home, Images, LogOut, Package, Palette, PenLine, Plus, Settings, SlidersHorizontal, Workflow, Zap, Ellipsis } from "lucide-react";
 import { useStore } from "@/lib/store";
 
 type NavItem = { href: string; icon: typeof Home; label: string };
@@ -30,6 +30,7 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
       { href: "/brand", icon: Palette, label: "Brand" },
       { href: "/catalog", icon: Package, label: "Catalogue" },
       { href: "/assets", icon: Images, label: "Assets" },
+      { href: "/data", icon: Database, label: "Data" },
     ],
   },
 ];

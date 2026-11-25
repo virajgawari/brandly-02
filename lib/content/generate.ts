@@ -12,6 +12,7 @@ import { judgeFit, JUDGE_VERSION, NOTABLE_GAP, type FitCheck } from "@/lib/judge
 import { checkRules, type RuleCheck } from "@/lib/judge/rules";
 import { PLATFORM_LIMITS } from "@/lib/templates";
 import { loadFormatReferences } from "@/lib/social/store";
+import { ART_DIRECTOR_SYSTEM, ART_DIRECTOR_VERSION, ArtDirectionSchema, type ArtDirection, buildArtDirectorUser, imagePromptFromDirection } from "./artdirect";
 import { chooseLayout, pickBrief, type PostBrief } from "./brief";
 import { recentPosts } from "./history";
 import { hashtagRange } from "./hashtags";
@@ -155,7 +156,29 @@ export async function generatePost(input: GenerateInput): Promise<GenerateResult
 
   let post = finalizePost(raw, { model, dna, brief, platforms });
   if (!post) return { error: "The AI reply did not match the expected format.", status: 502 };
+  // Art director runs in parallel with the checks (the judge can be slow) on the first draft's copy; it never fails generation.
+  // Skipped for product carousels, which use real photos.
+  const draft = post;
+  const direction: Promise<ArtDirection | null> =
+    brief.products?.length || process.env.ART_DIRECTOR === "off"
+      ? Promise.resolve(null)
+      : Promise.race([
+          llmScope(input.feature, { brandId: model?.id, promptVersion: ART_DIRECTOR_VERSION }, () =>
+            generateStructured(
+              ArtDirectionSchema,
+              ART_DIRECTOR_SYSTEM,
+              buildArtDirectorUser({ post: draft, model, dna, topPosts: (refs?.captions ?? []).slice(0, 4).map((caption, i) => ({ id: `top-${i + 1}`, caption, kind })) }),
+              { task: "fast", maxTokens: 1200, temperature: 0.7 }
+            )
+          ),
+          new Promise<null>((r) => setTimeout(() => r(null), 25_000)),
+        ]).catch((e) => {
+          console.warn("[generate] art director failed, keeping template prompt:", String(e instanceof Error ? e.message : e).slice(0, 160));
+          return null;
+        });
   post = await checkAndRevise(post, { ...input, brief, prompt, started, opts: n8nEnabled() ? undefined : llmOpts });
+  const art = await direction;
+  if (art) post = { ...post, imagePrompt: imagePromptFromDirection(art), artDirection: art };
   if (brief.products?.length) {
     post.layout = "product-cover";
     return { post, generationId };

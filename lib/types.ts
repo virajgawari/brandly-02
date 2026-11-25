@@ -111,6 +111,8 @@ export interface GeneratedPost {
   stat?: string;
   slides?: CarouselSlide[];
   visualBrief?: VisualBrief;
+  /** Art-director output that produced imagePrompt (lib/content/artdirect.ts); absent when the template prompt was used. */
+  artDirection?: import("./content/artdirect").ArtDirection;
   /** Layout chosen for the visual. */
   layout?: import("./brand/model").LayoutId;
   rendered?: RenderedMedia;

@@ -10,6 +10,7 @@ import { BUSINESS_MODELS, INDUSTRIES, PRIMARY_GOALS, type BusinessModel, type In
 import { BrandAssets, productsToPhotos, type LogoAsset, type ProductAsset } from "@/components/onboarding/BrandAssets";
 import { ChipGroup, LiveBrandBoard, LiveFindings, OnboardingShell, Question, TierCards } from "@/components/onboarding/kit";
 import { brandNameFromTitle, nameFromUrl } from "@/lib/brand/naming";
+import { LogoGenerator } from "@/components/brand/LogoGenerator";
 import { BrandPostPreview, PaletteStrip } from "@/components/brand/BrandPreview";
 import { afterSync, useStore } from "@/lib/store";
 import { track } from "@/lib/track";
@@ -476,9 +477,18 @@ export default function OnboardingPage() {
           <Input label="Brand name" value={confirmName} onChange={(e) => setConfirmName(e.target.value)} autoFocus />
           {model && (
             <div className="mt-6 space-y-3">
-              {model.expression.logoUrl && (
+              {(logo?.url || model.expression.logoUrl) && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={model.expression.logoUrl} alt="Your logo" className="h-12 w-auto max-w-[200px] object-contain" />
+                <img src={logo?.url ?? model.expression.logoUrl} alt="Your logo" className="h-12 w-auto max-w-[200px] object-contain" />
+              )}
+              {!model.expression.logoUrl && !model.expression.logoPath && (
+                <LogoGenerator
+                  model={{ ...model, name: confirmName.trim() || model.name }}
+                  onPick={(l) => {
+                    setLogo({ path: l.logoPath, url: l.url, dataUri: l.dataUri });
+                    setModel((m) => (m ? { ...m, expression: { ...m.expression, logoPath: l.logoPath } } : m));
+                  }}
+                />
               )}
               <PaletteStrip
                 palette={{

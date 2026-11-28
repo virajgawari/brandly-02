@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import type { BrandModel } from "@/lib/brand/model";
 import { uploadBrandImage } from "@/lib/brand/upload-client";
+import { LogoGenerator } from "./LogoGenerator";
 
 /** Shows the brand's logo and lets the owner replace it with their own file. */
 export function LogoUpload({ model, onChange }: { model: BrandModel; onChange: (logoPath: string) => void }) {
@@ -59,6 +60,14 @@ export function LogoUpload({ model, onChange }: { model: BrandModel; onChange: (
       <input ref={input} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden onChange={(e) => { upload(e.target.files); e.target.value = ""; }} />
       {error && <p className="text-xs text-error mt-2">{error}</p>}
       <p className="text-xs text-text-muted mt-2">PNG, JPG, WebP or SVG, up to 5 MB. Used on every post.</p>
+      <LogoGenerator
+        model={model}
+        hasLogo={!!src}
+        onPick={(l) => {
+          setSigned((s) => ({ ...s, [l.logoPath]: l.url }));
+          onChange(l.logoPath);
+        }}
+      />
     </div>
   );
 }

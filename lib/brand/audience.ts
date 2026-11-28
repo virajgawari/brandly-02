@@ -109,11 +109,15 @@ export function complianceFor(a: Partial<Audience>): Compliance {
 
 /** Plain-English audience summary for prompts and cards. */
 export function describeAudience(a: Partial<Audience>): string {
+  const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}` : xs[0] ?? "");
   const parts: string[] = [];
-  if (a.gender) parts.push(GENDER_OPTIONS.find((g) => g.value === a.gender)!.label.toLowerCase());
-  if (a.ageGroups?.length) parts.push(`aged ${a.ageGroups.map((x) => AGE_LABELS[x]).join(", ")}`);
+  // "Everyone" says nothing about the audience, so it is left out of the sentence.
+  if (a.gender && a.gender !== "all") parts.push(GENDER_OPTIONS.find((g) => g.value === a.gender)!.label.toLowerCase());
+  if (a.ageGroups?.length) parts.push(`aged ${list(a.ageGroups.map((x) => AGE_LABELS[x]))}`);
   if (a.affluence) parts.push(`${AFFLUENCE_OPTIONS.find((o) => o.value === a.affluence)!.label.toLowerCase()} spenders`);
-  if (a.markets?.cityTiers?.length) parts.push(`in ${a.markets.cityTiers.map((t) => CITY_TIER_LABELS[t].toLowerCase()).join(", ")}`);
-  if (a.markets?.countries?.length) parts.push(`(${a.markets.countries.join(", ")})`);
+  const tiers = a.markets?.cityTiers?.length ? `in ${list(a.markets.cityTiers.map((t) => CITY_TIER_LABELS[t].toLowerCase()))}` : "";
+  const countries = a.markets?.countries?.length ? list(a.markets.countries) : "";
+  if (tiers) parts.push(countries ? `${tiers} across ${countries}` : tiers);
+  else if (countries) parts.push(`in ${countries}`);
   return parts.join(", ");
 }

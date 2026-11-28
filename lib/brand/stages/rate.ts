@@ -1,5 +1,5 @@
 import { paragraphs } from "../../measure/paragraphs";
-import { FACETS, PERSONALITY_FACETS, rateTexts, type Facet, type RateOptions } from "../../measure/rate";
+import { FACETS, PERSONALITY_FACETS, facetPath, rateTexts, type Facet, type RateOptions } from "../../measure/rate";
 import { MEASURE_VERSION } from "../../measure/version";
 import type { TextMeasures } from "../../measure/text";
 import { evidenceId, type Measures } from "../model";
@@ -8,11 +8,11 @@ import type { StageDefinition } from "./types";
 
 /** A facet needs this many texts with a quoted score before its value replaces the LLM's guess. */
 export const MIN_RATED_TEXTS = 5;
-const BUDGET_MS = 50_000;
+const BUDGET_MS = 24_000;
 
 export type RateInput = IngestOutput & { textMeasures?: TextMeasures; /** Overrides for tests. */ rateOptions?: Partial<RateOptions> };
 
-const path = (f: Facet) => ((PERSONALITY_FACETS as readonly string[]).includes(f) ? `personality.${f}` : `voice.tone.${f}`);
+const path = facetPath;
 
 /** An LLM judge scores personality and tone on sampled paragraphs; each score must quote the text. */
 export const rateStage: StageDefinition<RateInput> = {
@@ -27,7 +27,7 @@ export const rateStage: StageDefinition<RateInput> = {
       return { patches: [], output: {} };
     }
     try {
-      const r = await rateTexts(paras, { samples: 20, runs: 2, batchSize: 10, delayMs: 4000, deadlineMs: Date.now() + BUDGET_MS, ...input.rateOptions });
+      const r = await rateTexts(paras, { samples: 20, runs: 1, batchSize: 20, delayMs: 0, deadlineMs: Date.now() + BUDGET_MS, ...input.rateOptions });
       const usable = FACETS.filter((f) => (r.ratings[f]?.n ?? 0) >= MIN_RATED_TEXTS);
       const measures: Measures | undefined = input.textMeasures
         ? {

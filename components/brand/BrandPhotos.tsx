@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import type { BrandModel, BrandPhoto } from "@/lib/brand/model";
 import { productFromTags } from "@/lib/brand/describe";
+import Link from "next/link";
 import { uploadBrandImage } from "@/lib/brand/upload-client";
+import { dropPathFromProducts, fetchBrandProducts } from "@/lib/catalog/sync-client";
 
 const isProduct = (p: BrandPhoto) => p.role === "product";
 
@@ -23,6 +25,12 @@ export function PhotoGrid({ model, role, onChange }: { model: BrandModel; role: 
   const input = useRef<HTMLInputElement>(null);
 
   const key = shown.map((p) => p.path).join("|");
+  // Photos that belong to a Catalogue product; their names are edited there.
+  const [linked, setLinked] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (role !== "product") return;
+    fetchBrandProducts(model.id).then((ps) => setLinked(new Set(ps.flatMap((p) => p.imagePaths))));
+  }, [role, model.id, key]);
   useEffect(() => {
     const missing = shown.filter((p) => !urls[p.path]);
     if (!missing.length) return;
@@ -72,10 +80,12 @@ export function PhotoGrid({ model, role, onChange }: { model: BrandModel; role: 
 
   const remove = (p: BrandPhoto) => {
     onChange(all.filter((x) => x.path !== p.path));
+    if (isProduct(p)) dropPathFromProducts(model.id, p.path);
     fetch(`/api/brands/${model.id}/photos?path=${encodeURIComponent(p.path)}`, { method: "DELETE" }).catch(() => undefined);
   };
 
-  const move = (p: BrandPhoto) =>
+  const move = (p: BrandPhoto) => {
+    if (isProduct(p)) dropPathFromProducts(model.id, p.path);
     patch(p.path, (x) => {
       if (isProduct(x)) {
         const { role: _role, ...rest } = x;
@@ -84,6 +94,7 @@ export function PhotoGrid({ model, role, onChange }: { model: BrandModel; role: 
       }
       return { ...x, role: "product", ...(x.product ? {} : productFromTags(x.tags) ? { product: productFromTags(x.tags) } : {}) };
     });
+  };
 
   const setName = (p: BrandPhoto, name: string) => patch(p.path, (x) => ({ ...x, product: { ...x.product, name } }));
 
@@ -103,7 +114,13 @@ export function PhotoGrid({ model, role, onChange }: { model: BrandModel; role: 
                 <X size={12} />
               </button>
             </div>
-            {role === "product" && (
+            {role === "product" && linked.has(p.path) && (
+              <p className="text-sm truncate">
+                {p.product?.name || "Product"}{" "}
+                <Link href="/catalog" className="text-xs text-text-muted underline underline-offset-4 hover:text-text">Edit in Catalogue</Link>
+              </p>
+            )}
+            {role === "product" && !linked.has(p.path) && (
               <input
                 value={p.product?.name ?? ""}
                 onChange={(e) => setName(p, e.target.value)}

@@ -2,7 +2,7 @@
 import { useEffect } from "react";
 import { Heart, MessageCircle, Send, Bookmark } from "lucide-react";
 import clsx from "clsx";
-import { readableOn, type Palette } from "@/lib/brand/color";
+import { contrastRatio, readableOn, type Palette } from "@/lib/brand/color";
 import { loadGoogleFonts } from "@/lib/brand/client";
 
 /**
@@ -18,7 +18,10 @@ export function BrandPostPreview({
   variant = 0,
   imageUrl,
   className,
+  handle,
 }: {
+  /** The brand's real Instagram handle; falls back to a handle made from the name. */
+  handle?: string;
   name: string;
   headline: string;
   caption: string;
@@ -34,6 +37,9 @@ export function BrandPostPreview({
   const headingStyle = { fontFamily: `'${fonts.heading}', serif` };
   const bodyStyle = { fontFamily: `'${fonts.body}', sans-serif` };
   const layout = variant % 3;
+  const shownHandle = (handle?.replace(/^@/, "").trim() || name.toLowerCase().replace(/\s+/g, ""));
+  // A brand's primary colour is often too close to its background; fall back to readable text.
+  const inkOnNeutral = contrastRatio(palette.primary, palette.neutral) >= 4.5 ? palette.primary : readableOn(palette.neutral);
   // Long one-liners shrink and clamp so they never overflow the square.
   const headlineSize = headline.length > 70 ? 18 : headline.length > 45 ? 22 : headline.length > 28 ? 26 : 30;
   const headlineStyle = { ...headingStyle, fontSize: headlineSize };
@@ -47,7 +53,7 @@ export function BrandPostPreview({
         >
           {name.slice(0, 1).toUpperCase()}
         </span>
-        <span className="text-[13px] font-semibold">{name.toLowerCase().replace(/\s+/g, "")}</span>
+        <span className="text-[13px] font-semibold">{shownHandle}</span>
       </div>
 
       <div className="aspect-square relative overflow-hidden" style={{ background: layout === 1 ? palette.primary : palette.neutral }}>
@@ -57,7 +63,7 @@ export function BrandPostPreview({
         ) : layout === 0 ? (
           <div className="absolute inset-0 p-6 flex flex-col justify-between">
             <span className="w-10 h-1.5 rounded-full" style={{ background: palette.accent }} />
-            <p className="leading-[1.08] font-bold line-clamp-5" style={{ ...headlineStyle, color: palette.primary }}>
+            <p className="leading-[1.08] font-bold line-clamp-5" style={{ ...headlineStyle, color: inkOnNeutral }}>
               {headline}
             </p>
             <div className="flex items-end justify-between">
@@ -99,7 +105,7 @@ export function BrandPostPreview({
           <Bookmark size={20} strokeWidth={1.75} className="ml-auto" />
         </div>
         <p className="text-[13px] leading-snug line-clamp-3" style={bodyStyle}>
-          <span className="font-semibold mr-1">{name.toLowerCase().replace(/\s+/g, "")}</span>
+          <span className="font-semibold mr-1">{shownHandle}</span>
           {caption}
         </p>
       </div>

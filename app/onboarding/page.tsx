@@ -8,12 +8,13 @@ import AppShell from "@/components/layout/AppShell";
 import { Button, Input, Select, Textarea } from "@/components/ui";
 import { BUSINESS_MODELS, INDUSTRIES, PRIMARY_GOALS, type BusinessModel, type Industry, type PrimaryGoal } from "@/lib/brand/taxonomy";
 import { BrandAssets, productsToPhotos, type LogoAsset, type ProductAsset } from "@/components/onboarding/BrandAssets";
-import { ChipGroup, LiveFindings, OnboardingShell, Question, TierCards } from "@/components/onboarding/kit";
+import { ChipGroup, LiveBrandBoard, LiveFindings, OnboardingShell, Question, TierCards } from "@/components/onboarding/kit";
 import { brandNameFromTitle, nameFromUrl } from "@/lib/brand/naming";
 import { LogoGenerator } from "@/components/brand/LogoGenerator";
 import { BrandPostPreview, PaletteStrip } from "@/components/brand/BrandPreview";
 import { afterSync, useStore } from "@/lib/store";
 import { track } from "@/lib/track";
+import { queueInstagramLearning } from "@/lib/social/autolearn";
 import { emptyModel, AGE_GROUPS, MOMENTS, MOTIVATIONS, type Affluence, type AgeGroup, type BrandModel, type CityTier, type Gender, type Moment, type Motivation } from "@/lib/brand/model";
 import { mergePatch } from "@/lib/brand/merge";
 import { AFFLUENCE_OPTIONS, AGE_LABELS, CITY_TIER_LABELS, GENDER_OPTIONS, LANGUAGE_OPTIONS, MOMENT_LABELS, MOTIVATION_LABELS } from "@/lib/brand/audience";
@@ -26,11 +27,11 @@ import type { Direction } from "@/lib/brand/stages/directions";
 type Door = "analyse" | "build" | "refine";
 type Step =
   | "website" | "instagram" | "files" | "assets" | "name" | "reading" | "confirm"
-  | "offering" | "business" | "markets"
-  | "audience" | "why" | "personality" | "directions" | "finishing";
+  | "offering" | "business"
+  | "audience" | "personality" | "directions" | "finishing" | "ready";
 
-const INTERVIEW: Step[] = ["audience", "why", "personality", "directions"];
-const BUILD_STEPS: Step[] = ["name", "offering", "business", "markets", ...INTERVIEW, "assets"];
+const INTERVIEW: Step[] = ["audience", "personality", "directions"];
+const BUILD_STEPS: Step[] = ["name", "offering", "business", ...INTERVIEW, "assets"];
 
 interface Answers {
   offering: string;
@@ -97,6 +98,13 @@ export default function OnboardingPage() {
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => abortRef.current?.abort(), []);
+  // Deep link from Home: /onboarding?door=build jumps straight to the questionnaire.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("door") === "build") {
+      setDoor("build");
+      setStep("name");
+    }
+  }, []);
   // Funnel: which step people reach, and on which door.
   useEffect(() => {
     track("onboarding_step", { props: { step, door } });
@@ -218,32 +226,38 @@ export default function OnboardingPage() {
       { website: websiteUrl.trim() || undefined, instagram: igHandle.trim() || undefined, pdfName: pdf?.name },
       { source: "stage", stageId: "pipeline:analyse" }
     );
-    router.push("/brand?welcome=1");
+    if (igHandle.trim()) queueInstagramLearning(confirmed.id);
+    setRunning(false);
+      setStep("ready");
   };
 
   // ── Door B: answers → model ─────────────────────────────────────────────
   const modelFromAnswers = useCallback((): BrandModel => {
     const base = model ?? emptyModel(name.trim(), door === "refine" ? "refine" : "build", draftId);
     const countries = answers.countries.split(",").map((c) => c.trim()).filter(Boolean);
+    // Skipped screens leave answers empty; an empty answer must not overwrite what is already known.
+    const keep = <T,>(v: T): T | undefined =>
+      v === undefined || v === "" || (Array.isArray(v) && v.length === 0) ? undefined : v;
+    const competitors = answers.competitors.split(",").map((c) => c.trim()).filter(Boolean);
     return mergePatch(
       base,
       {
         name: name.trim(),
         strategy: {
-          offering: answers.offering,
-          category: answers.category,
+          offering: keep(answers.offering),
+          category: keep(answers.category),
           industry: answers.industry,
           businessModel: answers.businessModel,
           primaryGoal: answers.primaryGoal,
-          competitors: answers.competitors.split(",").map((c) => c.trim()).filter(Boolean),
+          competitors: keep(competitors),
           audience: {
             gender: answers.gender[0],
-            ageGroups: answers.ageGroups,
+            ageGroups: keep(answers.ageGroups),
             affluence: answers.affluence,
-            markets: { countries, cityTiers: answers.cityTiers },
-            languages: answers.languages,
-            motivations: answers.motivations,
-            moments: answers.moments,
+            markets: { countries: keep(countries), cityTiers: keep(answers.cityTiers) },
+            languages: keep(answers.languages),
+            motivations: keep(answers.motivations),
+            moments: keep(answers.moments),
           },
         },
         personality: scorePersonality(answers.personality),
@@ -278,10 +292,11 @@ export default function OnboardingPage() {
     try {
       const withAnswers = modelFromAnswers();
       const chosen = mergePatch(withAnswers, directionToPatch(d), { source: "user", confidence: 1 }).model;
-      const result = await runPipeline("build", door === "build" ? withAssets(chosen) : chosen, {}, setFindings);
+      const result = await runPipeline("build", withAssets(chosen), {}, setFindings);
       saveBrandModel(result.model, door === "refine" ? { website: websiteUrl.trim() || undefined, instagram: igHandle.trim() || undefined } : {}, { source: "build" });
       // Every direction shown + the one picked: preference data for improving directions later.
       const brandId = result.model.id;
+      if (door === "refine" && igHandle.trim()) queueInstagramLearning(brandId);
       afterSync(brandId).then(() =>
         fetch("/api/build-sessions", {
           method: "POST",
@@ -290,7 +305,8 @@ export default function OnboardingPage() {
           keepalive: true,
         }).catch(() => undefined)
       );
-      router.push("/brand?welcome=1");
+      setRunning(false);
+      setStep("ready");
     } catch (err) {
       setRunning(false);
       setError(err instanceof Error ? err.message : String(err));
@@ -319,19 +335,30 @@ export default function OnboardingPage() {
             inputMode="url"
             autoFocus
           />
-          <div className="mt-6 flex flex-col items-center gap-2 text-sm text-text-muted">
+          <div className="mt-4 flex justify-center text-sm text-text-muted">
             <button
               onClick={() => setDoor(door === "refine" ? "analyse" : "refine")}
               aria-pressed={door === "refine"}
               className={clsx("underline-offset-4 hover:underline", door === "refine" && "text-text font-medium")}
             >
-              {door === "refine" && <Check size={14} className="inline mr-1 -mt-0.5" />}I have a website, but no real brand yet
+              {door === "refine" && <Check size={14} className="inline mr-1 -mt-0.5" />}My brand is new, help me shape it
             </button>
-            <button onClick={() => { setWebsiteUrl(""); setDoor("analyse"); setStep("instagram"); }} className="underline-offset-4 hover:underline">
-              No website? Use Instagram or files
+          </div>
+          <p className="mt-8 mb-3 text-xs text-text-muted text-center">No website?</p>
+          <div className="grid sm:grid-cols-2 gap-3 text-left">
+            <button
+              onClick={() => { setWebsiteUrl(""); setDoor("analyse"); setStep("instagram"); }}
+              className="rounded-2xl border border-border bg-card p-4 hover:border-text/30 transition-colors"
+            >
+              <p className="font-medium text-sm">Use Instagram or files</p>
+              <p className="text-xs text-text-muted mt-1">Add your handle or screenshots and we learn from those.</p>
             </button>
-            <button onClick={() => { setDoor("build"); setStep("name"); }} className="underline-offset-4 hover:underline">
-              I&apos;m starting from scratch
+            <button
+              onClick={() => { setDoor("build"); setStep("name"); }}
+              className="rounded-2xl border border-border bg-card p-4 hover:border-text/30 transition-colors"
+            >
+              <p className="font-medium text-sm">Start from scratch</p>
+              <p className="text-xs text-text-muted mt-1">Answer a few questions and pick one of three directions.</p>
             </button>
           </div>
         </OnboardingShell>
@@ -342,7 +369,7 @@ export default function OnboardingPage() {
           step={stepNo}
           total={flow.length}
           title="Got an Instagram?"
-          subtitle="Optional. We note your handle; screenshots on the next step let us study your posts."
+          subtitle="Optional. We read your best posts to learn how they look and sound. Screenshots on the next step help too."
           onBack={goBack()}
           primary={{ label: "Continue", onClick: () => setStep("files") }}
           secondary={{ label: "Skip", onClick: () => setStep("files") }}
@@ -432,11 +459,11 @@ export default function OnboardingPage() {
       {step === "reading" && (
         <OnboardingShell
           title={running ? `Reading ${runName || "your brand"}` : error ? "That didn't work" : "Done"}
-          subtitle={running ? "This takes about 20–40 seconds. Here's what we've found so far." : undefined}
+          subtitle={running ? "Watch your brand take shape. This can take a minute on bigger sites." : undefined}
           onBack={running ? undefined : () => setStep(hasSite ? "assets" : "name")}
           primary={error ? { label: "Try again", onClick: readBrand } : undefined}
         >
-          <LiveFindings findings={findings} running={running} />
+          <LiveBrandBoard findings={findings} running={running} />
           {error && <p className="mt-4 text-sm text-error">{error}</p>}
         </OnboardingShell>
       )}
@@ -491,8 +518,8 @@ export default function OnboardingPage() {
           total={flow.length}
           title="How does your business work?"
           onBack={goBack()}
-          primary={{ label: "Continue", onClick: () => setStep("markets") }}
-          secondary={{ label: "Skip", onClick: () => setStep("markets") }}
+          primary={{ label: "Continue", onClick: () => setStep("audience") }}
+          secondary={{ label: "Skip for now", onClick: () => setStep("audience") }}
         >
           <Question title="Which industry fits best?">
             <Select options={INDUSTRIES} value={answers.industry ?? ""} onChange={(v) => set("industry", (v || undefined) as Industry | undefined)} />
@@ -506,32 +533,6 @@ export default function OnboardingPage() {
         </OnboardingShell>
       )}
 
-      {step === "markets" && (
-        <OnboardingShell
-          step={stepNo}
-          total={flow.length}
-          title="Where are your customers?"
-          onBack={goBack()}
-          primary={{ label: "Continue", onClick: () => setStep("audience") }}
-          secondary={{ label: "Skip", onClick: () => setStep("audience") }}
-        >
-          <Question title="Which country or countries?">
-            <Input value={answers.countries} onChange={(e) => set("countries", e.target.value)} placeholder="India" />
-          </Question>
-          <Question title="Where are most customers?" hint="Pick all that apply">
-            <ChipGroup
-              multi
-              options={(Object.keys(CITY_TIER_LABELS) as CityTier[]).map((v) => ({ value: v, label: CITY_TIER_LABELS[v] }))}
-              value={answers.cityTiers}
-              onChange={(v) => set("cityTiers", v)}
-            />
-          </Question>
-          <Question title="Which language should posts be in?" hint="Pick all that apply">
-            <ChipGroup multi options={LANGUAGE_OPTIONS.map((l) => ({ value: l, label: l }))} value={answers.languages} onChange={(v) => set("languages", v)} />
-          </Question>
-        </OnboardingShell>
-      )}
-
       {step === "audience" && (
         <OnboardingShell
           step={stepNo}
@@ -539,8 +540,8 @@ export default function OnboardingPage() {
           title="Who buys from you?"
           subtitle={door === "refine" ? "We guessed from your website. Fix anything that's off." : "This shapes your colours, voice and where you post."}
           onBack={goBack()}
-          primary={{ label: "Continue", onClick: () => setStep("why") }}
-          secondary={{ label: "Not sure, let Brandly suggest", onClick: () => setStep("why") }}
+          primary={{ label: "Continue", onClick: () => setStep("personality") }}
+          secondary={{ label: "Skip for now", onClick: () => setStep("personality") }}
         >
           <Question title="Mostly…">
             <ChipGroup options={GENDER_OPTIONS} value={answers.gender} onChange={(v) => set("gender", v)} />
@@ -554,34 +555,13 @@ export default function OnboardingPage() {
         </OnboardingShell>
       )}
 
-      {step === "why" && (
-        <OnboardingShell
-          step={stepNo}
-          total={flow.length}
-          title="Why and when do people buy?"
-          onBack={goBack()}
-          primary={{ label: "Continue", onClick: () => setStep("personality") }}
-          secondary={{ label: "Not sure, let Brandly suggest", onClick: () => setStep("personality") }}
-        >
-          <Question title="Why do they buy from you?" hint="Pick up to 2">
-            <ChipGroup multi max={2} options={MOTIVATIONS.map((m) => ({ value: m, label: MOTIVATION_LABELS[m] }))} value={answers.motivations} onChange={(v) => set("motivations", v)} />
-          </Question>
-          <Question title="When do they think of you?" hint="Pick all that apply">
-            <ChipGroup multi options={MOMENTS.map((m) => ({ value: m, label: MOMENT_LABELS[m] }))} value={answers.moments} onChange={(v) => set("moments", v)} />
-          </Question>
-          <Question title="Brands you admire or compete with" hint="Optional. Separate with commas.">
-            <Input value={answers.competitors} onChange={(e) => set("competitors", e.target.value)} placeholder="e.g. Chaayos, Blue Tokai" />
-          </Question>
-        </OnboardingShell>
-      )}
-
       {step === "personality" && (
         <OnboardingShell
           step={stepNo}
           total={flow.length}
           title="Pick the one that's more you"
           subtitle="Go with your gut. Skip any that don't fit."
-          onBack={() => setStep("why")}
+          onBack={() => setStep("audience")}
           primary={{ label: "Show me directions", onClick: () => designDirections(), disabled: personalityAnswered < 3 }}
         >
           <div className="space-y-6">
@@ -693,6 +673,18 @@ export default function OnboardingPage() {
               ))}
             </div>
           )}
+        </OnboardingShell>
+      )}
+
+      {step === "ready" && (
+        <OnboardingShell
+          hero
+          title={`${runName || "Your brand"} is ready`}
+          subtitle="Brandly learned your look and voice. Let's make your first post."
+          primary={{ label: "Make my first post", onClick: () => router.push("/composer?first=1") }}
+          secondary={{ label: "Review your brand first", onClick: () => router.push("/brand?welcome=1") }}
+        >
+          <p className="text-sm text-text-muted text-center">It takes about half a minute. You can change anything afterwards.</p>
         </OnboardingShell>
       )}
 

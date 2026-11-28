@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse, requireSession } from "@/lib/db/session";
+import { errorResponse, requireEditor } from "@/lib/db/session";
 import { postToRow } from "@/lib/db/mappers";
 import { editRatio } from "@/lib/edit-ratio";
 import type { GeneratedPost, ScheduledPost } from "@/lib/types";
@@ -10,9 +10,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const updates = (await req.json()) as Partial<ScheduledPost>;
+    if (updates.status === "published") return NextResponse.json({ error: "Posts are marked published by the publisher, not by the client." }, { status: 400 });
+    if (updates.status === "scheduled" && !(new Date(updates.scheduledAt ?? "").getTime() > Date.now() - 60_000)) return NextResponse.json({ error: "Pick a time in the future." }, { status: 400 });
     const row = postToRow(updates);
     if (!Object.keys(row).length) return NextResponse.json({ ok: true });
-    const s = await requireSession();
+    const s = await requireEditor();
 
     const { data: before, error: readErr } = await s.db
       .from("posts")
@@ -38,7 +40,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         props: { edit_ratio: editRatio(original.caption ?? "", updates.content.caption ?? ""), fields: changedFields },
       });
     }
-    if (updates.status && updates.status !== before.status && (updates.status === "scheduled" || updates.status === "published")) {
+    if (updates.status && updates.status !== before.status && updates.status === "scheduled") {
       events.push({ ...base, event: updates.status });
     } else if (updates.scheduledAt && before.scheduled_at && new Date(updates.scheduledAt).getTime() !== new Date(before.scheduled_at).getTime()) {
       events.push({ ...base, event: "rescheduled", props: { from: before.scheduled_at, to: updates.scheduledAt } });
@@ -57,7 +59,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const s = await requireSession();
+    const s = await requireEditor();
     const { error } = await s.db.from("posts").update({ status: "discarded" }).eq("id", id);
     if (error) throw error;
     await s.db.from("content_events").insert({ post_id: id, workspace_id: s.workspaceId, user_id: s.userId, event: "discarded" });

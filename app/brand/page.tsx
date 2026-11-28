@@ -13,14 +13,18 @@ import { DeleteBrandDialog } from "@/components/brand/DeleteBrandDialog";
 import { LayoutKitEditor } from "@/components/brand/LayoutKitEditor";
 import { PhotoGrid } from "@/components/brand/BrandPhotos";
 import { LogoUpload } from "@/components/brand/LogoUpload";
+import { ChannelsSection } from "@/components/brand/ChannelsSection";
+import { InstagramSection } from "@/components/brand/InstagramSection";
 import { useStore } from "@/lib/store";
 import { fromBrandDNA } from "@/lib/brand/projection";
+import { profileCompleteness } from "@/lib/brand/completeness";
 import { isLocked, mergePatch, sectionConfidence, setLock } from "@/lib/brand/merge";
-import { AGE_GROUPS, MOMENTS, MOTIVATIONS, type BrandModel, type ModelPatch, type Tone } from "@/lib/brand/model";
+import { AGE_GROUPS, emptyModel, MOMENTS, MOTIVATIONS, type BrandModel, type ModelPatch, type Tone } from "@/lib/brand/model";
 import { AFFLUENCE_OPTIONS, AGE_LABELS, complianceFor, GENDER_OPTIONS, LANGUAGE_OPTIONS, MOMENT_LABELS, MOTIVATION_LABELS } from "@/lib/brand/audience";
 import { checkPalette, contrastRatio, normalizeHex, readableOn, wcagLevel } from "@/lib/brand/color";
 import { FONT_CHOICES } from "@/lib/brand/fonts";
 import { loadGoogleFonts } from "@/lib/brand/client";
+import { hasQueuedInstagramLearning } from "@/lib/social/autolearn";
 import { ListEditor, NEEDS_CHECK, ScaleSlider as ToneSlider, Section } from "@/components/brand/editors";
 import { AudienceMoreSection, ContentMoreSection, IdentitySection, LookSection, PersonalitySection, PositioningSection, WordsSection } from "@/components/brand/KnowledgeSections";
 
@@ -40,6 +44,12 @@ function BrandProfile() {
     setTab(TAB_OF_SECTION[s] ?? "about");
     setTimeout(() => document.getElementById(`section-${s}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   };
+
+  // Onboarding queued an Instagram read: open Voice, where it runs and shows progress.
+  const brandId = brand?.id;
+  useEffect(() => {
+    if (brandId && hasQueuedInstagramLearning(brandId)) setTab("voice");
+  }, [brandId]);
 
   useEffect(() => {
     if (model) loadGoogleFonts([model.expression.tokens.font.heading.$value, model.expression.tokens.font.body.$value]);
@@ -77,7 +87,9 @@ function BrandProfile() {
     return (sc.source !== "user" && !sc.locked && sc.confidence > 0 && sc.confidence < NEEDS_CHECK) || (s === "strategy.audience" && sc.confidence === 0);
   });
 
-  const refreshVoiceLine = (m: BrandModel) => {
+  const completeness = profileCompleteness(model);
+
+  const refreshVoiceLine =(m: BrandModel) => {
     clearTimeout(voiceTimer.current);
     voiceTimer.current = setTimeout(async () => {
       setVoiceLoading(true);
@@ -121,7 +133,7 @@ function BrandProfile() {
             className="block w-full text-2xl font-semibold tracking-tight mt-0.5 bg-transparent rounded-lg -mx-2 px-2 border border-transparent hover:border-border focus:border-text/40 focus:outline-none"
           />
           {model.identity.oneLiner && <p className="text-text-muted mt-1 text-sm max-w-xl">{model.identity.oneLiner}</p>}
-          <p className="text-xs text-text-muted mt-2">Everything on this page is editable. Changes save as you go, and edited fields stay locked so Brandly won&apos;t overwrite them.</p>
+          <p className="text-xs text-text-muted mt-2">Change anything here. It saves as you go.</p>
         </div>
         <Link href="/composer">
           <Button size="lg">
@@ -129,6 +141,23 @@ function BrandProfile() {
           </Button>
         </Link>
       </div>
+
+      {completeness.percent < 100 && (
+        <div className="rounded-xl border border-border bg-card px-4 py-3 mb-6">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <p className="font-medium">Profile {completeness.percent}% complete</p>
+            <p className="text-xs text-text-muted truncate">
+              Next:{" "}
+              <button type="button" onClick={() => goToSection(completeness.missing[0].section)} className="underline underline-offset-2 hover:text-text">
+                {completeness.missing[0].label}
+              </button>
+            </p>
+          </div>
+          <div className="h-1.5 rounded-full bg-text/10 mt-2 overflow-hidden" role="progressbar" aria-valuenow={completeness.percent} aria-valuemin={0} aria-valuemax={100}>
+            <div className="h-full bg-text rounded-full" style={{ width: `${completeness.percent}%` }} />
+          </div>
+        </div>
+      )}
 
       {(welcome || toCheck.length > 0) && (
         <div className={clsx("rounded-xl border px-4 py-3 mb-6 text-sm flex items-start gap-3", toCheck.length ? "border-warn/30 bg-warn/[0.06]" : "border-border bg-card")}>
@@ -140,7 +169,7 @@ function BrandProfile() {
                   {toCheck.length} {toCheck.length === 1 ? "thing" : "things"} to check
                 </p>
                 <p className="text-text-muted mt-0.5">
-                  Brandly wasn&apos;t sure about these. Fix anything that&apos;s off, or lock what&apos;s right.{" "}
+                  Brandly wasn&apos;t sure about these. Have a quick look.{" "}
                   {toCheck.map((s, i) => (
                     <span key={s}>
                       <button type="button" onClick={() => goToSection(s)} className="underline underline-offset-2 hover:text-text">
@@ -152,7 +181,7 @@ function BrandProfile() {
                 </p>
               </>
             ) : (
-              <p>Here&apos;s your brand. Everything is editable, and anything you change is locked so Brandly won&apos;t overwrite it.</p>
+              <p>Here&apos;s your brand. Change anything you like; your edits are kept.</p>
             )}
           </div>
         </div>
@@ -206,6 +235,31 @@ function BrandProfile() {
             </div>
           </Section>
           )}
+
+          {tab === "about" && (
+          <Section id="strategy.business" title="Business details" description="Real contact details Brandly may use in calls to action. Leave blank to skip." model={model} onLock={lock}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {(
+                [
+                  ["address", "Address"],
+                  ["phone", "Phone"],
+                  ["hours", "Opening hours"],
+                  ["ctaLink", "Link for calls to action"],
+                  ["ctaLabel", "Button wording (e.g. Book a table)"],
+                ] as const
+              ).map(([k, label]) => (
+                <Input
+                  key={k}
+                  label={label}
+                  defaultValue={model.strategy.business?.[k] ?? ""}
+                  onBlur={(e) => e.target.value !== (model.strategy.business?.[k] ?? "") && edit({ strategy: { business: { [k]: e.target.value.trim() } } })}
+                />
+              ))}
+            </div>
+          </Section>
+          )}
+
+          {tab === "about" && <ChannelsSection sources={brand.sources} onSave={(next) => saveBrandModel(model, next)} />}
 
           {tab === "look" && (
           <>
@@ -304,6 +358,15 @@ function BrandProfile() {
           )}
 
           {tab === "voice" && (
+            <InstagramSection
+              model={model}
+              sources={brand.sources}
+              onModel={(m) => saveBrandModel(m, brand.sources, { source: "stage", stageId: "pipeline:social" })}
+              onSources={(s) => saveBrandModel(model, s)}
+            />
+          )}
+
+          {tab === "voice" && (
           <Section id="voice" title="Voice" description="Move the sliders and watch the sample line change" model={model} onLock={lock}>
             <div className="grid sm:grid-cols-2 gap-x-8 gap-y-5">
               <ToneSlider left="Funny" right="Serious" value={model.voice.tone.funny_serious} onChange={(v) => setTone("funny_serious", v)} />
@@ -369,7 +432,7 @@ function BrandProfile() {
           </Section>
           )}
 
-          {tab === "content" && (
+          {tab === "audience" && (
           <Section id="content" title="What to post about" model={model} onLock={lock}>
             <div className="space-y-6">
               <div>
@@ -396,7 +459,7 @@ function BrandProfile() {
 
           {tab === "more" && (
             <>
-              <p className="text-sm text-text-muted">Optional depth: positioning, character, personality, look, words, audience and products.</p>
+              <p className="text-sm text-text-muted">Optional extras for fine-tuning. You can skip all of this.</p>
               <PositioningSection model={model} edit={edit} onLock={lock} />
               <IdentitySection model={model} edit={edit} onLock={lock} />
               <PersonalitySection model={model} edit={edit} onLock={lock} />
@@ -404,6 +467,25 @@ function BrandProfile() {
               <WordsSection model={model} edit={edit} save={save} onLock={lock} />
               <AudienceMoreSection model={model} edit={edit} onLock={lock} />
               <ContentMoreSection model={model} edit={edit} onLock={lock} />
+              <Card className="p-5 flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <h2 className="font-medium">Reset brand profile</h2>
+                  <p className="text-xs text-text-muted mt-0.5">Clears the profile so you can build it again. Keeps the name, photos, logo and channels.</p>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    if (!window.confirm(`Reset the profile for ${model.name}? Your edits to colours, voice and content will be cleared.`)) return;
+                    const fresh = emptyModel(model.name, model.mode, model.id);
+                    fresh.expression.photos = model.expression.photos;
+                    fresh.expression.logoUrl = model.expression.logoUrl;
+                    fresh.expression.logoPath = model.expression.logoPath;
+                    save(fresh);
+                  }}
+                >
+                  Reset
+                </Button>
+              </Card>
               <Card className="p-5 flex items-center justify-between gap-4 flex-wrap">
                 <div>
                   <h2 className="font-medium">Delete this brand</h2>
@@ -428,6 +510,7 @@ function BrandProfile() {
           <p className="text-xs text-text-muted">Preview</p>
           <BrandPostPreview
             name={model.name}
+            handle={brand.sources.instagram}
             headline={model.identity.oneLiner || model.name}
             caption={model.voice.sampleLines[0] ?? model.identity.oneLiner}
             palette={palette}
@@ -453,14 +536,13 @@ function BrandProfile() {
   );
 }
 
-type TabId = "about" | "look" | "voice" | "audience" | "content" | "more";
+type TabId = "about" | "look" | "voice" | "audience" | "more";
 const TABS: { id: TabId; label: string }[] = [
   { id: "about", label: "About" },
   { id: "look", label: "Look" },
   { id: "voice", label: "Voice" },
-  { id: "audience", label: "Audience" },
-  { id: "content", label: "Content" },
-  { id: "more", label: "More" },
+  { id: "audience", label: "Audience & posts" },
+  { id: "more", label: "Advanced" },
 ];
 const TAB_OF_SECTION: Record<string, TabId> = {
   identity: "about",
@@ -468,7 +550,7 @@ const TAB_OF_SECTION: Record<string, TabId> = {
   "expression.tokens.font": "look",
   voice: "voice",
   "strategy.audience": "audience",
-  content: "content",
+  content: "audience",
 };
 
 const SECTION_NAMES: Record<string, string> = {

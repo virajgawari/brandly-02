@@ -10,6 +10,7 @@
 //   content     → pillars + Ehrenberg-Bass category entry points / distinctive assets
 
 import type { Platform } from "@/lib/types";
+import type { PostStats } from "@/lib/social/stats";
 import type { TextMeasures } from "@/lib/measure/text";
 import type { RatingResult } from "@/lib/measure/rate";
 import type { Contradiction } from "./contradictions";
@@ -69,6 +70,16 @@ export interface Audience {
   notes?: string;
 }
 
+/** Real-world contact details. Optional; fed into post calls to action. */
+export interface BusinessDetails {
+  address?: string;
+  phone?: string;
+  hours?: string;
+  /** Where a call to action should send people (booking page, shop, WhatsApp link). */
+  ctaLink?: string;
+  ctaLabel?: string;
+}
+
 export interface Strategy {
   category: string;
   /** Controlled lists (lib/brand/taxonomy.ts); unset on brands made before classification existed. */
@@ -82,6 +93,7 @@ export interface Strategy {
   differentiators: string[];
   proofPoints: string[];
   competitors: string[];
+  business?: BusinessDetails;
 }
 
 export interface Prism {
@@ -177,7 +189,51 @@ export interface BrandPhoto {
   product?: { name: string; note?: string };
 }
 
+/** Visual identity reverse-engineered from the brand's real top posts. */
+export interface StyleGuide {
+  medium: string;
+  palette: string;
+  composition: string;
+  typography: string;
+  /** Share (0-100) of the brand's images that carry overlaid text. */
+  textOnImagePct?: number;
+  /** Dominant on-image text colour as a #hex, as seen in the brand's posts. */
+  textColor?: string;
+  /** Id from FONT_PAIRS (lib/brand/fonts.ts) closest to the lettering in the posts. */
+  fontPairId?: string;
+  /** Whether on-image text sits on a pill or box background. */
+  textBox?: "none" | "pill" | "box";
+  /** Share (0-100) of the brand's images that show a person. */
+  peoplePct?: number;
+  /** How people appear: candid, posed, hands only, faces. */
+  peopleStyle?: string;
+  /** ~40 words of lighting, medium, colour mood and aesthetic with no subject. Appended to every image prompt. */
+  promptSuffix: string;
+}
+
+/** Copywriting rules learned from the brand's real posts. */
+export interface Playbook {
+  /** Content pillars with their share of posts; shares add up to about 100. */
+  pillars: { name: string; pct: number }[];
+  adjectives: string[];
+  neverSoundsLike: string;
+  hookFormulas: string[];
+  formatting: { avgWords: number; lineBreaks: string; emoji: string };
+  cta: string;
+  hashtagRule: string;
+  blacklist: string[];
+  /** Share of posts per post format id (FORMATS in lib/content/brief.ts), learned from the feed. */
+  formatMix?: { format: string; pct: number }[];
+  /** Share of the feed by post type, counted from the scraped posts (not by the model). */
+  postTypeMix?: { image: number; carousel: number; video: number };
+  /** Counted from the scraped posts (lib/social/stats.ts), not guessed by the model. */
+  postStats?: PostStats;
+  /** Captions of the best posts, used as few-shot style anchors. */
+  anchors: string[];
+}
+
 export interface Expression {
+  styleGuide?: StyleGuide;
   tokens: {
     color: {
       primary: ColorToken;
@@ -211,6 +267,7 @@ export interface Tone {
 }
 
 export interface Voice {
+  playbook?: Playbook;
   tone: Tone;
   /** Per-platform overrides of `tone`. Read through `effectiveTone` in scale.ts. */
   toneByPlatform?: Partial<Record<Platform, Partial<Tone>>>;

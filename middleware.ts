@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Pages anyone can open. Everything else needs a session.
-const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/auth/", "/api/cron/"]; // cron routes check CRON_SECRET themselves
+const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/privacy", "/terms", "/auth/", "/api/cron/"]; // cron routes check CRON_SECRET themselves
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -33,7 +33,7 @@ export async function middleware(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const signedIn = Boolean(data?.claims);
   const path = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
+  const isPublic = path === "/" || PUBLIC_PATHS.some((p) => path.startsWith(p));
 
   if (!signedIn && !isPublic) {
     if (path.startsWith("/api/")) return NextResponse.json({ error: "Please sign in." }, { status: 401 });

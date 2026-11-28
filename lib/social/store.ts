@@ -1,0 +1,237 @@
+import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { downloadAsJpeg } from "@/lib/render/assets";
+import type { ScoredPost } from "./types";
+
+const TOP_IMAGES = 12;
+/** Max images (cover + carousel slides) sent to the vision call. */
+const VISION_IMAGES = 15;
+const SLIDES_PER_POST = 3;
+
+/**
+ * SECURITY: callers pass either the user's RLS client or the service-role client. Every query
+ * here filters by workspaceId, so it is safe with the service role too.
+ */
+type Client = SupabaseClient;
+
+/** Copies the cover (and up to 2 more carousel slides) of each top post into the `images` bucket; returns storage paths by post id, cover first. */
+async function storeTopImages(db: Client, workspaceId: string, brandId: string, posts: ScoredPost[]) {
+  const paths = new Map<string, string[]>();
+  const top = posts.filter((p) => p.isTop).slice(0, TOP_IMAGES);
+  for (let i = 0; i < top.length; i += 4) {
+    await Promise.all(
+      top.slice(i, i + 4).map(async (p) => {
+        const saved: string[] = [];
+        for (const [n, url] of p.mediaUrls.slice(0, SLIDES_PER_POST).entries()) {
+          const img = await downloadAsJpeg(url, 1280);
+          if (!img) continue;
+          const path = `${workspaceId}/brands/${brandId}/social/${p.externalId}${n ? `-${n}` : ""}.jpg`;
+          const { error } = await db.storage.from("images").upload(path, img.buf, { contentType: "image/jpeg", upsert: true });
+          if (!error) saved.push(path);
+        }
+        if (saved.length) paths.set(p.externalId, saved);
+      }),
+    );
+  }
+  return paths;
+}
+
+/** Saves scored posts (and copies of the top images) for a brand. Returns how many rows were written. */
+export async function saveSocialPosts(db: Client, workspaceId: string, brandId: string, posts: ScoredPost[]): Promise<number> {
+  const stored = await storeTopImages(db, workspaceId, brandId, posts);
+  const rows = posts.map((p) => ({
+    workspace_id: workspaceId,
+    brand_id: brandId,
+    platform: "instagram",
+    external_id: p.externalId,
+    posted_at: p.timestamp,
+    type: p.type,
+    caption: p.caption,
+    hashtags: p.hashtags,
+    mentions: p.mentions,
+    likes: p.likes,
+    comments: p.comments,
+    views: p.views,
+    media_urls: p.mediaUrls,
+    stored_paths: stored.get(p.externalId) ?? [],
+    engagement_score: p.engagementScore,
+    is_top: p.isTop,
+  }));
+  if (!rows.length) return 0;
+  const { error } = await db.from("social_posts").upsert(rows, { onConflict: "brand_id,platform,external_id" });
+  if (error) throw new Error(`Couldn't save scraped posts: ${error.message}`);
+  return rows.length;
+}
+
+/** Posts and base64 top images for the `social` pipeline. Empty when nothing was scraped. */
+export async function loadSocialInput(db: Client, workspaceId: string, brandId: string) {
+  const { data, error } = await db
+    .from("social_posts")
+    .select("external_id, posted_at, type, caption, hashtags, mentions, likes, comments, views, media_urls, stored_paths, engagement_score, is_top")
+    .eq("workspace_id", workspaceId)
+    .eq("brand_id", brandId)
+    .order("engagement_score", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  const socialPosts: ScoredPost[] = (data ?? []).map((r) => ({
+    externalId: r.external_id,
+    timestamp: r.posted_at ?? "",
+    type: r.type,
+    caption: r.caption,
+    hashtags: r.hashtags ?? [],
+    mentions: r.mentions ?? [],
+    likes: r.likes,
+    comments: r.comments,
+    views: r.views,
+    mediaUrls: r.media_urls ?? [],
+    engagementScore: Number(r.engagement_score),
+    isTop: r.is_top,
+  }));
+  // Covers first so every top post is represented, then carousel slides while there is room.
+  const topRows = (data ?? []).filter((r) => r.is_top);
+  const covers = topRows.flatMap((r) => (r.stored_paths ?? []).slice(0, 1));
+  const slides = topRows.flatMap((r) => (r.stored_paths ?? []).slice(1));
+  const paths = [...covers, ...slides].slice(0, VISION_IMAGES);
+  const socialImages: string[] = [];
+  for (const path of paths) {
+    const { data: blob } = await db.storage.from("images").download(path);
+    if (blob) socialImages.push(Buffer.from(await blob.arrayBuffer()).toString("base64"));
+  }
+  const { data: ws } = await db.from("workspaces").select("timezone").eq("id", workspaceId).maybeSingle();
+  return { socialPosts, socialImages, timeZone: (ws?.timezone as string | undefined) || "UTC" };
+}
+
+export interface TopPostView {
+  id: string;
+  type: string | null;
+  caption: string;
+  likes: number;
+  comments: number;
+  postedAt: string | null;
+  imageUrl: string | null;
+}
+
+/** Counts and top posts (with signed image URLs) for the brand page. */
+export async function listTopSocialPosts(db: Client, workspaceId: string, brandId: string): Promise<{ count: number; posts: TopPostView[] }> {
+  const { count } = await db
+    .from("social_posts")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspaceId)
+    .eq("brand_id", brandId);
+  const { data } = await db
+    .from("social_posts")
+    .select("external_id, type, caption, likes, comments, posted_at, media_urls, stored_paths")
+    .eq("workspace_id", workspaceId)
+    .eq("brand_id", brandId)
+    .eq("is_top", true)
+    .order("engagement_score", { ascending: false })
+    .limit(10);
+  const posts = await Promise.all(
+    (data ?? []).map(async (r): Promise<TopPostView> => {
+      const path = (r.stored_paths ?? [])[0] as string | undefined;
+      let imageUrl: string | null = null;
+      if (path) {
+        const { data: signed } = await db.storage.from("images").createSignedUrl(path, 3600);
+        imageUrl = signed?.signedUrl ?? null;
+      }
+      return {
+        id: r.external_id,
+        type: r.type,
+        caption: String(r.caption ?? "").slice(0, 280),
+        likes: r.likes ?? 0,
+        comments: r.comments ?? 0,
+        postedAt: r.posted_at,
+        imageUrl,
+      };
+    }),
+  );
+  return { count: count ?? 0, posts };
+}
+
+/** Storage paths of the brand's best scraped images, for use as Muse style references. */
+export async function topStylePaths(db: Client, workspaceId: string, brandId: string, n = 3): Promise<string[]> {
+  const { data } = await db
+    .from("social_posts")
+    .select("stored_paths")
+    .eq("workspace_id", workspaceId)
+    .eq("brand_id", brandId)
+    .eq("is_top", true)
+    .order("engagement_score", { ascending: false })
+    .limit(n * 2);
+  return (data ?? []).flatMap((r) => (r.stored_paths ?? []).slice(0, 1)).slice(0, n);
+}
+
+export interface SocialPostView extends TopPostView {
+  hashtags: string[];
+  views: number;
+  score: number;
+  isTop: boolean;
+  images: string[];
+}
+
+/** Every scraped post (best first) with signed image URLs, for the Data page. */
+export async function listAllSocialPosts(db: Client, workspaceId: string, brandId: string): Promise<SocialPostView[]> {
+  const { data } = await db
+    .from("social_posts")
+    .select("external_id, type, caption, hashtags, likes, comments, views, posted_at, stored_paths, media_urls, engagement_score, is_top")
+    .eq("workspace_id", workspaceId)
+    .eq("brand_id", brandId)
+    .order("engagement_score", { ascending: false })
+    .limit(200);
+  return Promise.all(
+    (data ?? []).map(async (r): Promise<SocialPostView> => {
+      const paths = ((r.stored_paths ?? []) as string[]).slice(0, 3);
+      const images: string[] = [];
+      for (const path of paths) {
+        const { data: signed } = await db.storage.from("images").createSignedUrl(path, 3600);
+        if (signed?.signedUrl) images.push(signed.signedUrl);
+      }
+      return {
+        id: r.external_id,
+        type: r.type,
+        caption: String(r.caption ?? ""),
+        likes: r.likes ?? 0,
+        comments: r.comments ?? 0,
+        views: r.views ?? 0,
+        postedAt: r.posted_at,
+        hashtags: r.hashtags ?? [],
+        score: Number(r.engagement_score) || 0,
+        isTop: !!r.is_top,
+        images: images.length ? images : ((r.media_urls ?? []) as string[]).slice(0, 1),
+        imageUrl: images[0] ?? ((r.media_urls ?? []) as string[])[0] ?? null,
+      };
+    }),
+  );
+}
+
+export type RefKind = "image" | "carousel";
+
+/** The brand's best real posts of one format: captions to imitate and image paths (carousels keep slide order). */
+export async function loadFormatReferences(db: Client, workspaceId: string, brandId: string, kind: RefKind, n = 4) {
+  const { data } = await db
+    .from("social_posts")
+    .select("id, type, caption, stored_paths, is_top, engagement_score")
+    .eq("workspace_id", workspaceId)
+    .eq("brand_id", brandId)
+    .order("engagement_score", { ascending: false })
+    .limit(60);
+  const rows = data ?? [];
+  const same = rows.filter((r) => r.type === kind);
+  // Fewer than 2 of this format scraped: borrow from the other so the AI still has something real to study.
+  const pool = same.length >= 2 ? same : rows;
+  const picked = pool.slice(0, n);
+  return {
+    matched: same.length >= 2,
+    captions: picked.map((r) => String(r.caption ?? "").trim()).filter(Boolean),
+    /** Same posts with id, engagement and cover path, for art direction. */
+    posts: picked.map((r) => ({
+      id: String(r.id),
+      caption: String(r.caption ?? "").trim(),
+      engagement: Number(r.engagement_score) || 0,
+      kind: String(r.type ?? ""),
+      cover: ((r.stored_paths ?? []) as string[])[0] as string | undefined,
+    })),
+    /** Storage paths per post, cover first. */
+    imagePaths: picked.map((r) => ((r.stored_paths ?? []) as string[]).slice(0, 3)).filter((p) => p.length),
+  };
+}

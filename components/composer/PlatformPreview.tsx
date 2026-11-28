@@ -1,4 +1,5 @@
 "use client";
+import ReferenceScroll from "./ReferenceScroll";
 import { useState } from "react";
 import type { GeneratedPost, Platform, BrandDNA } from "@/lib/types";
 import { PLATFORM_ICONS, PLATFORM_LABELS } from "@/lib/templates";
@@ -12,9 +13,11 @@ interface Props {
   /** Branded image(s) from /api/render-post; several = carousel. */
   images?: string[];
   imageLoading?: boolean;
+  /** Lets the loading state show the brand posts the AI is studying. */
+  brandId?: string;
 }
 
-export default function PlatformPreview({ post, platforms, brandDNA, igHandle, images = [], imageLoading }: Props) {
+export default function PlatformPreview({ post, platforms, brandDNA, igHandle, images = [], imageLoading, brandId }: Props) {
   const [active, setActive] = useState<Platform>(platforms[0]);
   const [slide, setSlide] = useState(0);
   const imageUrl = images[Math.min(slide, images.length - 1)] ?? null;
@@ -70,7 +73,7 @@ export default function PlatformPreview({ post, platforms, brandDNA, igHandle, i
           <div>
             <p className="text-sm font-semibold">
               {active === "twitter"
-                ? `@${igHandle || "yourbrand"}`
+                ? `@${(igHandle || "yourbrand").replace(/\s+/g, "").toLowerCase()}`
                 : igHandle || "Your Brand"}
             </p>
             <p className="text-xs text-text-muted">
@@ -121,7 +124,11 @@ export default function PlatformPreview({ post, platforms, brandDNA, igHandle, i
             }}
           >
             <p className="text-xs font-medium text-text mb-2">{imageLoading ? "Laying out your post…" : "Image idea"}</p>
-            <p className="text-xs text-text-muted leading-relaxed max-w-xs">{post.imagePrompt}</p>
+            {imageLoading ? (
+              brandId ? <ReferenceScroll brandId={brandId} /> : <div className="h-2 w-40 animate-pulse rounded bg-text/10" aria-hidden />
+            ) : (
+              <p className="text-xs text-text-muted leading-relaxed max-w-xs line-clamp-6">{post.imagePrompt}</p>
+            )}
           </div>
         )}
 

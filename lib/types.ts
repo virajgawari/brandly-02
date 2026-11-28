@@ -25,6 +25,11 @@ export interface BrandDNA {
 export interface BrandSources {
   website?: string;
   instagram?: string;
+  facebook?: string;
+  linkedin?: string;
+  /** X (Twitter) handle, without the @. */
+  x?: string;
+  googleBusiness?: string;
   pdfName?: string;
   pdfPages?: number;
 }
@@ -68,9 +73,18 @@ export interface RenderedMedia {
   paths: string[];
   /** Signed URLs for display (re-signed from `paths` before publishing). */
   urls: string[];
-  size: "1080x1350" | "1080x1080";
+  size: "1080x1350" | "1080x1080" | "1080x1920";
   /** The photo used inside the layout (brand photo path or generated image URL). */
   photo?: { kind: "brand" | "generated"; ref: string };
+  /** Elements hidden on the image (all shown when absent). */
+  show?: { logo?: boolean; cta?: boolean; subline?: boolean; image?: boolean; headline?: boolean };
+  /** Carousel: one photo per slide, same order as post.slides. `photo` is the first. */
+  slidePhotos?: { kind: "brand" | "generated"; ref: string }[];
+  /** Provenance: the image contains AI-generated visuals (passed to platforms as self-disclosure). */
+  isAiGenerated?: boolean;
+  hasSyntheticVisual?: boolean;
+  /** C2PA Content Credentials were embedded in the stored file(s). */
+  c2paSigned?: boolean;
 }
 
 export interface GeneratedPost {
@@ -97,9 +111,30 @@ export interface GeneratedPost {
   stat?: string;
   slides?: CarouselSlide[];
   visualBrief?: VisualBrief;
+  /** Art-director output that produced imagePrompt (lib/content/artdirect.ts); absent when the template prompt was used. */
+  artDirection?: import("./content/artdirect").ArtDirection;
   /** Layout chosen for the visual. */
   layout?: import("./brand/model").LayoutId;
   rendered?: RenderedMedia;
+  /** Earlier drafts of this post, newest first (see lib/content/versions.ts). */
+  versions?: PostVersion[];
+  /** Result of the rule and brand-fit checks run after generation. */
+  check?: PostCheck;
+}
+
+export interface PostVersion {
+  at: string;
+  post: Omit<GeneratedPost, "versions" | "rendered">;
+}
+
+export interface PostCheck {
+  rules: import("./judge/rules").RuleCheck;
+  fit: import("./judge/fit").FitCheck;
+  /** True when the post was rewritten once after failing a check. */
+  revised: boolean;
+  version: string;
+  /** Headline and caption the check ran on; the composer flags the check stale when they change. */
+  text?: string;
 }
 
 export interface ScheduledPost {
@@ -143,6 +178,8 @@ export interface RssTrigger {
   type: "rss";
   feedUrl: string;
   checkIntervalHours: number;
+  /** Link of the newest article already turned into a post (set by the runner). */
+  lastSeen?: string;
 }
 
 export interface RecurringTrigger {
@@ -191,6 +228,8 @@ export interface GeneratePostPayload {
   additionalContext?: string;
   /** Product carousel: the products to show, in order (max 8, paths from the brand's product photos). */
   products?: ProductRef[];
+  /** One post about one chosen product: never turn it into a carousel. */
+  single?: boolean;
 }
 
 /** A product photo picked for a product carousel. */

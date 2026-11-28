@@ -5,7 +5,7 @@ import "server-only";
 export interface FontData {
   name: string;
   data: ArrayBuffer;
-  weight: 400 | 700;
+  weight: 400 | 500 | 600 | 700 | 800;
   style: "normal";
 }
 
@@ -18,15 +18,16 @@ async function fetchCss(family: string, weights: string): Promise<string | null>
 }
 
 async function load(family: string): Promise<FontData[]> {
-  // Ask for regular + bold; some families only have one weight.
-  const css = (await fetchCss(family, ":wght@400;700")) ?? (await fetchCss(family, ""));
+  // Ask for the full range; families that lack some weights fall back to a smaller set, then to the default.
+  const css = (await fetchCss(family, ":wght@400;500;600;700;800")) ?? (await fetchCss(family, ":wght@400;700")) ?? (await fetchCss(family, ""));
   if (!css) return [];
   const faces = [...css.matchAll(/@font-face\s*{([^}]*)}/g)].map((m) => m[1]);
   const out: FontData[] = [];
   const seen = new Set<number>();
   for (const face of faces) {
     const src = face.match(/src:\s*url\(([^)]+)\)\s*format\(['"]?(truetype|opentype)['"]?\)/)?.[1];
-    const weight = Number(face.match(/font-weight:\s*(\d+)/)?.[1] ?? 400) >= 600 ? 700 : 400;
+    const raw = Number(face.match(/font-weight:\s*(\d+)/)?.[1] ?? 400);
+    const weight = (([400, 500, 600, 700, 800].reduce((a, b) => (Math.abs(b - raw) < Math.abs(a - raw) ? b : a))) as FontData["weight"]);
     // Latin subset is listed last when there are several; keep the first per weight that loads.
     if (!src || seen.has(weight)) continue;
     const r = await fetch(src, { signal: AbortSignal.timeout(10000) });

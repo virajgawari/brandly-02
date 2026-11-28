@@ -30,15 +30,17 @@ export function Section({
   const empty = c.confidence === 0;
   const locked = !!model.meta[id]?.locked;
   return (
-    <Card className={clsx("p-5", needsCheck && "border-warn/40")}>
+    <Card className={clsx("p-5 group", needsCheck && "border-warn/40")}>
       <div id={`section-${id}`} className="flex items-start justify-between gap-3 mb-4 scroll-mt-6">
         <div>
           <h2 className="font-medium">{title}</h2>
           {description && <p className="text-xs text-text-muted mt-0.5">{description}</p>}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <SourceTag source={empty ? undefined : c.source} needsCheck={needsCheck || (empty && id === "strategy.audience")} />
-          <LockButton locked={locked} onToggle={() => onLock(id, !locked)} />
+          {(needsCheck || (empty && id === "strategy.audience")) && <SourceTag needsCheck />}
+          <span className={clsx(!locked && "sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity")}>
+            <LockButton locked={locked} onToggle={() => onLock(id, !locked)} />
+          </span>
         </div>
       </div>
       {children}

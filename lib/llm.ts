@@ -4,11 +4,13 @@ import type { z, ZodTypeAny } from "zod";
 import { currentLlmContext, persistRecord, startRecord, hashText, type LlmCallRecord } from "./llm-log";
 
 // Singleton clients, instantiated once per server process
-const anthropicClient = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null;
-const geminiClient = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
-const groqKey = process.env.GROQ_API_KEY || null;
+/** Ignores unset values and copied placeholders like "your_anthropic_api_key_here". */
+const realKey = (v?: string) => (v && !/^your_|_here$|^changeme$|^xxx/i.test(v.trim()) ? v.trim() : null);
+const anthropicKey = realKey(process.env.ANTHROPIC_API_KEY);
+const geminiKey = realKey(process.env.GEMINI_API_KEY);
+const anthropicClient = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
+const geminiClient = geminiKey ? new GoogleGenerativeAI(geminiKey) : null;
+const groqKey = realKey(process.env.GROQ_API_KEY);
 
 type Provider = "claude" | "groq" | "gemini";
 
@@ -48,7 +50,7 @@ export const MODELS: Record<LlmTask, { order: Provider[] } & Record<Provider, st
     order: ["gemini", "claude"],
     groq: [],
     claude: list(process.env.MODEL_VISION_CLAUDE, ["claude-haiku-5-5"]),
-    gemini: list(process.env.MODEL_VISION_GEMINI, ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"]),
+    gemini: list(process.env.MODEL_VISION_GEMINI, ["gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"]),
   },
   creative: {
     order: ["groq", "claude", "gemini"],
@@ -68,7 +70,7 @@ export const MODELS: Record<LlmTask, { order: Provider[] } & Record<Provider, st
 export const CLAUDE_MODEL = MODELS.fast.claude[0];
 export const GEMINI_MODEL = MODELS.fast.gemini[0];
 
-const REQUEST_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 export interface GenerateOptions {
   task?: LlmTask;
@@ -82,6 +84,8 @@ export interface GenerateOptions {
   json?: boolean;
   /** Sampling temperature (0–2). Defaults to the provider's usual value (Groq 0.7). */
   temperature?: number;
+  /** Per-request timeout in ms (default 30 s). A timed-out request moves on to the next model or provider. */
+  timeoutMs?: number;
 }
 
 // A provider whose key was rejected is skipped for the rest of the process,
@@ -97,26 +101,26 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const hasKey = (p: Provider) => (p === "claude" ? !!anthropicClient : p === "groq" ? !!groqKey : !!geminiClient);
 
-async function claudeText(system: string, user: string, model: string, maxTokens: number, cachedContext?: string, temperature?: number): Promise<LlmReply> {
+async function claudeText(system: string, user: string, model: string, maxTokens: number, cachedContext?: string, temperature?: number, timeout = REQUEST_TIMEOUT_MS): Promise<LlmReply> {
   if (!anthropicClient) throw new Error("ANTHROPIC_API_KEY is missing.");
   const systemBlocks: Anthropic.TextBlockParam[] = [{ type: "text", text: system }];
   if (cachedContext) systemBlocks.push({ type: "text", text: cachedContext, cache_control: { type: "ephemeral" } });
   const msg = await anthropicClient.messages.create(
     { model, max_tokens: maxTokens, system: systemBlocks, messages: [{ role: "user", content: user }], ...(temperature !== undefined ? { temperature: Math.min(temperature, 1) } : {}) },
-    { timeout: REQUEST_TIMEOUT_MS }
+    { timeout }
   );
   logUsage(model, msg.usage);
   return { text: msg.content.map((b) => (b.type === "text" ? b.text : "")).join(""), usage: claudeUsage(msg.usage) };
 }
 
 /** Groq exposes an OpenAI-compatible API, so no SDK is needed. */
-async function groqText(system: string, user: string, model: string, maxTokens: number, cachedContext?: string, json = false, temperature = 0.7): Promise<LlmReply> {
+async function groqText(system: string, user: string, model: string, maxTokens: number, cachedContext?: string, json = false, temperature = 0.7, timeout = REQUEST_TIMEOUT_MS): Promise<LlmReply> {
   if (!groqKey) throw new Error("GROQ_API_KEY is missing.");
   const isGptOss = model.startsWith("openai/gpt-oss");
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${groqKey}`, "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeout),
     body: JSON.stringify({
       model,
       // Brand context first so Groq's automatic prefix caching can reuse it.
@@ -144,7 +148,7 @@ async function groqText(system: string, user: string, model: string, maxTokens: 
   };
 }
 
-async function geminiText(system: string, user: string, model: string, maxTokens: number, cachedContext?: string, json = false, temperature?: number): Promise<LlmReply> {
+async function geminiText(system: string, user: string, model: string, maxTokens: number, cachedContext?: string, json = false, temperature?: number, timeout = REQUEST_TIMEOUT_MS): Promise<LlmReply> {
   if (!geminiClient) throw new Error("GEMINI_API_KEY is missing.");
   const m = geminiClient.getGenerativeModel(
     {
@@ -157,7 +161,7 @@ async function geminiText(system: string, user: string, model: string, maxTokens
         ...(temperature !== undefined ? { temperature } : {}),
       },
     },
-    { timeout: REQUEST_TIMEOUT_MS }
+    { timeout }
   );
   const result = await m.generateContent(user);
   return { text: result.response.text(), usage: geminiUsage(result.response.usageMetadata) };
@@ -180,7 +184,7 @@ function order(task: LlmTask): Provider[] {
  * Tries each provider and each of its models; one quick retry when a model is busy.
  * The whole attempt chain is recorded as one `llm_calls` row (see lib/llm-log.ts).
  */
-async function withFallback(task: LlmTask, rec: LlmCallRecord, call: (provider: Provider, model: string) => Promise<LlmReply>): Promise<string> {
+async function withFallback(task: LlmTask, rec: LlmCallRecord, call: (provider: Provider, model: string) => Promise<LlmReply>, failFast = false): Promise<string> {
   let lastError: unknown;
   const tried: string[] = [];
   const started = Date.now();
@@ -213,7 +217,9 @@ async function withFallback(task: LlmTask, rec: LlmCallRecord, call: (provider: 
             disabled.add(provider);
             break;
           }
-          if (isBusyError(err) && attempt === 0) {
+          // A timeout means the model is slow right now: try the next one instead of waiting the same time again.
+          const timedOut = /timed? ?out|aborted/i.test(msgOf(err));
+          if (isBusyError(err) && attempt === 0 && !(failFast && timedOut)) {
             await wait(1200);
             continue;
           }
@@ -242,10 +248,11 @@ export async function generateText(system: string, user: string, maxTokensOrOpts
   );
   return withFallback(task, rec, (provider, model) =>
     provider === "claude"
-      ? claudeText(system, user, model, maxTokens, opts.cachedContext, opts.temperature)
+      ? claudeText(system, user, model, maxTokens, opts.cachedContext, opts.temperature, opts.timeoutMs)
       : provider === "groq"
-      ? groqText(system, user, model, maxTokens, opts.cachedContext, opts.json, opts.temperature)
-      : geminiText(system, user, model, maxTokens, opts.cachedContext, opts.json, opts.temperature)
+      ? groqText(system, user, model, maxTokens, opts.cachedContext, opts.json, opts.temperature, opts.timeoutMs)
+      : geminiText(system, user, model, maxTokens, opts.cachedContext, opts.json, opts.temperature, opts.timeoutMs),
+    opts.timeoutMs !== undefined
   );
 }
 

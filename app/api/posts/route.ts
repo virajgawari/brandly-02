@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse, requireSession } from "@/lib/db/session";
+import { errorResponse, requireEditor } from "@/lib/db/session";
 import { postToRow } from "@/lib/db/mappers";
 import type { ScheduledPost } from "@/lib/types";
 
@@ -7,9 +7,11 @@ import type { ScheduledPost } from "@/lib/types";
 // so later edits can be measured against what the model wrote.
 export async function POST(req: NextRequest) {
   try {
-    const { post, template, topic } = (await req.json()) as { post?: ScheduledPost; template?: string; topic?: string };
+    const { post, template, topic, productId } = (await req.json()) as { post?: ScheduledPost; template?: string; topic?: string; productId?: string };
     if (!post?.id || !post.brandId || !post.content) return NextResponse.json({ error: "post with id, brandId and content is required" }, { status: 400 });
-    const s = await requireSession();
+    if (post.status === "published") return NextResponse.json({ error: "Posts are marked published by the publisher, not by the client." }, { status: 400 });
+    if (post.status === "scheduled" && !(new Date(post.scheduledAt).getTime() > Date.now() - 60_000)) return NextResponse.json({ error: "Pick a time in the future." }, { status: 400 });
+    const s = await requireEditor();
     const { error } = await s.db.from("posts").insert({
       ...postToRow(post),
       id: post.id,
@@ -19,6 +21,7 @@ export async function POST(req: NextRequest) {
       generation_id: post.generationId ?? null,
       template: template ?? null,
       topic: topic ?? null,
+      product_id: productId ?? null,
       created_by: s.userId,
     });
     if (error) throw error;

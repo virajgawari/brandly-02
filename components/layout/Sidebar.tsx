@@ -3,16 +3,41 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import clsx from "clsx";
-import { CalendarDays, Check, ChevronsUpDown, Home, LogOut, Palette, PenLine, Plus, Workflow } from "lucide-react";
+import { Activity, CalendarDays, Check, Database, ChevronsUpDown, Home, Images, LogOut, Package, Palette, PenLine, Plus, Settings, SlidersHorizontal, Workflow, Zap, Ellipsis } from "lucide-react";
 import { useStore } from "@/lib/store";
 
-export const NAV = [
-  { href: "/", icon: Home, label: "Home" },
-  { href: "/brand", icon: Palette, label: "Brand" },
-  { href: "/composer", icon: PenLine, label: "Create" },
-  { href: "/calendar", icon: CalendarDays, label: "Calendar" },
-  { href: "/automation", icon: Workflow, label: "Automations" },
+type NavItem = { href: string; icon: typeof Home; label: string };
+const HOME: NavItem = { href: "/", icon: Home, label: "Home" };
+const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
+  { items: [HOME] },
+  {
+    label: "Make",
+    items: [
+      { href: "/composer", icon: PenLine, label: "Create" },
+      { href: "/sprint", icon: Zap, label: "Sprint" },
+    ],
+  },
+  {
+    label: "Plan",
+    items: [
+      { href: "/calendar", icon: CalendarDays, label: "Calendar" },
+      { href: "/automation", icon: Workflow, label: "Automations" },
+    ],
+  },
+  {
+    label: "Your brand",
+    items: [
+      { href: "/brand", icon: Palette, label: "Brand" },
+      { href: "/catalog", icon: Package, label: "Catalogue" },
+      { href: "/assets", icon: Images, label: "Assets" },
+      { href: "/data", icon: Database, label: "Data" },
+    ],
+  },
 ];
+const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
+const MOBILE_MAIN = NAV.filter((n) => ["/", "/composer", "/sprint", "/calendar"].includes(n.href));
+const MOBILE_MORE = NAV.filter((n) => !MOBILE_MAIN.includes(n));
+const isActive = (pathname: string, href: string) => pathname === href || (href !== "/" && pathname.startsWith(href));
 
 function BrandDot({ colors, size = 20 }: { colors: string[]; size?: number }) {
   return (
@@ -28,15 +53,19 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { brands, activeBrandId, setActiveBrand, getActiveBrand } = useStore();
   const activeBrand = getActiveBrand();
+  const role = useStore((s) => s.account?.role);
+  const isAdmin = role === "owner" || role === "admin";
   const [open, setOpen] = useState(false);
   const colorsOf = (b: (typeof brands)[number]) => Object.values(b.dna.colors);
 
   return (
     <aside className="hidden md:flex w-60 shrink-0 h-screen bg-surface border-r border-border flex-col sticky top-0">
-      <div className="px-4 h-14 flex items-center gap-2 border-b border-border">
+      {/* Plain anchor on purpose: a full page load refreshes the data and lands on Home. */}
+      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+      <a href="/" aria-label="Brandly home" className="px-4 h-14 flex items-center gap-2 border-b border-border">
         <span className="w-6 h-6 rounded-md bg-text text-bg grid place-items-center text-[13px] font-bold">B</span>
         <span className="text-[15px] font-semibold tracking-tight">Brandly</span>
-      </div>
+      </a>
 
       {/* Brand switcher */}
       <div className="p-3 border-b border-border relative">
@@ -84,23 +113,28 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 p-3 space-y-0.5" aria-label="Main">
-        {NAV.map(({ href, icon: Icon, label }) => {
-          const active = pathname === href || (href !== "/" && pathname.startsWith(href));
-          return (
-            <Link
-              key={href}
-              href={href}
-              aria-current={active ? "page" : undefined}
-              className={clsx(
-                "flex items-center gap-3 px-2.5 h-9 rounded-lg text-sm transition-colors",
-                active ? "bg-text/[0.07] text-text font-medium" : "text-text-muted hover:bg-text/5 hover:text-text"
-              )}
-            >
-              <Icon size={16} strokeWidth={1.75} />
-              {label}
-            </Link>
-          );
-        })}
+        {[...(activeBrand ? NAV_GROUPS : [{ items: [HOME] }]), ...(isAdmin ? [{ label: "Admin", items: [{ href: "/admin/agent", icon: SlidersHorizontal, label: "Learning agent" }, { href: "/admin/activity", icon: Activity, label: "Activity" }] }] : [])].map((g, gi) => (
+          <div key={g.label ?? gi} className={gi ? "pt-3" : ""}>
+            {g.label && g.label !== "Admin" && <p className="px-2.5 pb-1 text-[11px] uppercase tracking-wide text-text-muted/80">{g.label}</p>}
+            {g.items.map(({ href, icon: Icon, label }) => {
+              const active = isActive(pathname, href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={active ? "page" : undefined}
+                  className={clsx(
+                    "flex items-center gap-3 px-2.5 h-9 rounded-lg text-sm transition-colors",
+                    active ? "bg-text/[0.07] text-text font-medium" : "text-text-muted hover:bg-text/5 hover:text-text"
+                  )}
+                >
+                  <Icon size={16} strokeWidth={1.75} />
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
       <AccountMenu />
     </aside>
@@ -151,6 +185,9 @@ function AccountMenu() {
             </span>
           </label>
           <div className="h-px bg-border my-1" />
+          <Link href="/settings" onClick={() => setOpen(false)} className="w-full flex items-center gap-2.5 px-2 h-9 rounded-lg hover:bg-text/5 text-sm text-left">
+            <Settings size={14} /> Settings
+          </Link>
           <form action="/auth/signout" method="post">
             <button type="submit" className="w-full flex items-center gap-2.5 px-2 h-9 rounded-lg hover:bg-text/5 text-sm text-left">
               <LogOut size={14} /> Sign out
@@ -162,20 +199,43 @@ function AccountMenu() {
   );
 }
 
-/** Bottom tab bar on phones (the sidebar is hidden below md). */
+/** Bottom tab bar on phones (the sidebar is hidden below md). Four main tabs plus a More sheet. */
 export function MobileNav() {
   const pathname = usePathname();
+  const [more, setMore] = useState(false);
+  const moreActive = MOBILE_MORE.some((n) => isActive(pathname, n.href));
+  const tab = "flex flex-col items-center justify-center gap-0.5 h-14 text-[11px]";
+  // Setup is a focused flow; no tab bar until the brand is ready.
+  if (pathname?.startsWith("/onboarding")) return null;
   return (
-    <nav aria-label="Main" className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-surface border-t border-border grid grid-cols-5 pb-[env(safe-area-inset-bottom)]">
-      {NAV.map(({ href, icon: Icon, label }) => {
-        const active = pathname === href || (href !== "/" && pathname.startsWith(href));
-        return (
-          <Link key={href} href={href} aria-current={active ? "page" : undefined} className={clsx("flex flex-col items-center justify-center gap-0.5 h-14 text-[11px]", active ? "text-text font-medium" : "text-text-muted")}>
-            <Icon size={18} strokeWidth={1.75} />
-            {label}
-          </Link>
-        );
-      })}
-    </nav>
+    <>
+      {more && (
+        <div className="md:hidden fixed inset-0 z-30" onClick={() => setMore(false)}>
+          <div className="absolute bottom-[calc(3.5rem+env(safe-area-inset-bottom))] inset-x-3 bg-card border border-border rounded-2xl shadow-pop p-2 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+            {[...MOBILE_MORE, { href: "/settings", icon: Settings, label: "Settings" }].map(({ href, icon: Icon, label }) => (
+              <Link key={href} href={href} onClick={() => setMore(false)} className="flex items-center gap-3 px-3 h-11 rounded-lg text-sm hover:bg-text/5">
+                <Icon size={16} strokeWidth={1.75} />
+                {label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+      <nav aria-label="Main" className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-surface border-t border-border grid grid-cols-5 pb-[env(safe-area-inset-bottom)]">
+        {MOBILE_MAIN.map(({ href, icon: Icon, label }) => {
+          const active = isActive(pathname, href);
+          return (
+            <Link key={href} href={href} onClick={() => setMore(false)} aria-current={active ? "page" : undefined} className={clsx(tab, active ? "text-text font-medium" : "text-text-muted")}>
+              <Icon size={18} strokeWidth={1.75} />
+              {label}
+            </Link>
+          );
+        })}
+        <button onClick={() => setMore((m) => !m)} aria-expanded={more} className={clsx(tab, moreActive || more ? "text-text font-medium" : "text-text-muted")}>
+          <Ellipsis size={18} strokeWidth={1.75} />
+          More
+        </button>
+      </nav>
+    </>
   );
 }

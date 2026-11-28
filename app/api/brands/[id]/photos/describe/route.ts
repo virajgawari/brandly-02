@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse, requireSession } from "@/lib/db/session";
+import { errorResponse } from "@/lib/db/session";
+import { requireAi } from "@/lib/db/budget";
 import { llmScope } from "@/lib/db/llm-scope";
 import { analyseImages, parseJSON } from "@/lib/llm";
 import { imageFromStorage } from "@/lib/render/assets";
@@ -13,7 +14,7 @@ const ownPath = (ws: string, brandId: string, path: string) => path.startsWith(`
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const s = await requireSession();
+    const s = await requireAi();
     const body = (await req.json().catch(() => ({}))) as { paths?: unknown };
     const paths = (Array.isArray(body.paths) ? body.paths : [])
       .filter((p): p is string => typeof p === "string" && ownPath(s.workspaceId, id, p))
@@ -24,13 +25,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const usable = paths.map((path, i) => ({ path, uri: loaded[i] })).filter((x): x is { path: string; uri: string } => !!x.uri);
     if (!usable.length) return NextResponse.json({ items: [] });
 
-    const raw = await llmScope("photo-describe", { brandId: id }, () =>
-      analyseImages(
-        usable.map((x) => x.uri.split(",")[1]),
-        TAG_PROMPT,
-        1200
-      )
-    );
+    let raw: string;
+    try {
+      raw = await llmScope("photo-describe", { brandId: id }, () =>
+        analyseImages(
+          usable.map((x) => x.uri.split(",")[1]),
+          TAG_PROMPT,
+          1200
+        )
+      );
+    } catch (err) {
+      // Naming is a nicety: when no vision provider is available (quota, bad key), the photo is still saved.
+      console.warn("photo describe unavailable:", err instanceof Error ? err.message.slice(0, 200) : err);
+      return NextResponse.json({ items: [], unavailable: true });
+    }
     const tags = ImageTagsSchema.parse(parseJSON(raw) ?? []);
     const items = usable.map((x, i) => {
       const t = tags.find((tag) => tag.index === i);

@@ -1,5 +1,5 @@
 import type { BrandDNA } from "../types";
-import { emptyModel, type BrandModel } from "./model";
+import { emptyModel, type BrandModel, type Playbook } from "./model";
 import { describeAudience, MOMENT_LABELS, MOTIVATION_LABELS } from "./audience";
 import { mergePatch } from "./merge";
 import { toneToSigned } from "./scale";
@@ -71,6 +71,26 @@ export function fromBrandDNA(dna: BrandDNA, id: string, mode: BrandModel["mode"]
 const toneWord = (v: number, neg: string, pos: string) =>
   Math.abs(v) < 0.2 ? `balanced between ${neg} and ${pos}` : v < 0 ? (v < -0.6 ? `very ${neg}` : neg) : v > 0.6 ? `very ${pos}` : pos;
 
+function playbookLines(p: Playbook): string {
+  // Playbooks saved by older versions can lack any of these fields.
+  const pillars = p.pillars ?? [];
+  const adjectives = p.adjectives ?? [];
+  const hooks = p.hookFormulas ?? [];
+  const blacklist = p.blacklist ?? [];
+  const f = p.formatting;
+  return [
+    pillars.length && `PILLAR SPLIT: ${pillars.map((x) => `${x.name} ${x.pct}%`).join(", ")}`,
+    adjectives.length && `SOUNDS: ${adjectives.join(", ")}${p.neverSoundsLike ? `. NEVER sounds like: ${p.neverSoundsLike}` : ""}`,
+    hooks.length && `HOOK PATTERNS: ${hooks.join(" | ")}`,
+    f && (f.avgWords || f.lineBreaks || f.emoji) && `FORMAT: about ${f.avgWords || "?"} words. ${f.lineBreaks ?? ""} Emoji: ${f.emoji ?? ""}`,
+    p.cta && `CTA: ${p.cta}`,
+    p.hashtagRule && `HASHTAGS: ${p.hashtagRule}`,
+    blacklist.length && `NEVER WRITE: ${blacklist.join(", ")}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 /**
  * The ONLY place the Brand Model is turned into prompt text. Kept stable so it
  * can be prompt-cached as a prefix across every generation call.
@@ -112,6 +132,7 @@ export function toPromptContext(m: BrandModel): string {
     m.voice.vocabulary.use.length && `WORDS WE USE: ${m.voice.vocabulary.use.join(", ")}`,
     m.voice.vocabulary.avoid.length && `WORDS WE AVOID: ${m.voice.vocabulary.avoid.join(", ")}`,
     m.voice.sampleLines.length && `EXAMPLE LINES: ${m.voice.sampleLines.map((s) => `"${s}"`).join(" ")}`,
+    m.voice.playbook && playbookLines(m.voice.playbook),
     m.content.vibe.length && `VIBE: ${m.content.vibe.join(", ")}`,
     `VISUALS: palette ${c.primary.$value} (primary), ${c.secondary.$value}, ${c.accent.$value} (accent), ${c.neutral.$value} (background); fonts ${m.expression.tokens.font.heading.$value} / ${m.expression.tokens.font.body.$value}.${m.expression.visualStyle ? ` ${m.expression.visualStyle}` : ""}${m.expression.imageryStyle ? ` Imagery: ${m.expression.imageryStyle}` : ""}`,
     m.content.pillars.length && `CONTENT PILLARS: ${m.content.pillars.join("; ")}`,

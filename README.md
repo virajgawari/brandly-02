@@ -92,7 +92,13 @@ PDF pages are rasterised in the browser with PDF.js (raster and vector layers) a
 
 1. Push to GitHub and import the repo in Vercel.
 2. Add the environment variables from `.env.example`, including `CRON_SECRET`.
-3. `vercel.json` schedules `/api/cron/schedule` and `/api/cron/drain` daily, which is the most the Hobby plan allows.
+3. `vercel.json` schedules `/api/cron/schedule` and `/api/cron/drain` daily and `/api/cron/learn` weekly. The Hobby plan allows nothing more frequent than daily.
+4. Call the two frequent routes from an external scheduler, as a `GET` with the header `Authorization: Bearer $CRON_SECRET`. Until you do, scheduled posts are not published and automation rules do not run on their own.
+
+   | Route | Every |
+   |---|---|
+   | `/api/cron/publish` | 5 minutes |
+   | `/api/cron/automations` | 15 minutes |
 
 ## Known gaps
 

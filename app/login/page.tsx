@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Input } from "@/components/ui";
 import AuthCard, { authMessage, nextPath } from "@/components/auth/AuthCard";
 import { createClient } from "@/lib/supabase/client";
@@ -13,6 +13,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [sent, setSent] = useState(false);
+  const [qs, setQs] = useState(""); // keeps ?next= when switching between sign in and sign up
+  useEffect(() => setQs(window.location.search), []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,7 +74,7 @@ export default function LoginPage() {
       footer={
         <>
           New here?{" "}
-          <Link href="/signup" className="text-text underline underline-offset-2">
+          <Link href={`/signup${qs}`} className="text-text underline underline-offset-2">
             Create an account
           </Link>
         </>

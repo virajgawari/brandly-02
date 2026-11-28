@@ -51,15 +51,22 @@ export async function saveBrandPhoto(
 /** Downloads website images and keeps the ones big enough to use in posts. */
 export async function importBrandPhotos(s: Session, brandId: string, urls: string[], source: BrandPhoto["source"], max = 12): Promise<BrandPhoto[]> {
   const out: BrandPhoto[] = [];
-  for (const url of urls.slice(0, max * 2)) {
-    if (out.length >= max) break;
-    const img = await downloadAsJpeg(url);
-    if (!img || (img.width ?? 0) < MIN_SIDE || (img.height ?? 0) < MIN_SIDE) continue;
-    try {
-      out.push(await saveBrandPhoto(s, brandId, img.buf, source, url));
-    } catch (err) {
-      console.warn("[brand photos]", err instanceof Error ? err.message : err);
-    }
+  const list = urls.slice(0, max * 2);
+  // Download a few at a time; results keep the page order.
+  for (let i = 0; i < list.length && out.length < max; i += 4) {
+    const batch = await Promise.all(
+      list.slice(i, i + 4).map(async (url) => {
+        const img = await downloadAsJpeg(url).catch(() => null);
+        if (!img || (img.width ?? 0) < MIN_SIDE || (img.height ?? 0) < MIN_SIDE) return null;
+        try {
+          return await saveBrandPhoto(s, brandId, img.buf, source, url);
+        } catch (err) {
+          console.warn("[brand photos]", err instanceof Error ? err.message : err);
+          return null;
+        }
+      })
+    );
+    for (const p of batch) if (p && out.length < max) out.push(p);
   }
   return out;
 }
@@ -101,7 +108,7 @@ export async function storeLogo(s: Session, brandId: string, url: string): Promi
 export async function attachSourceMedia(
   s: Session,
   model: BrandModel,
-  found: { photoUrls?: string[]; screenshots?: string[]; logoUrl?: string; insights?: { url: string; colors: string[]; tags?: BrandPhoto["tags"] }[] }
+  found: { photoUrls?: string[]; screenshots?: string[]; screenshotSource?: "instagram" | "upload"; logoUrl?: string; insights?: { url: string; colors: string[]; tags?: BrandPhoto["tags"] }[] }
 ): Promise<BrandModel> {
   const have = model.expression.photos ?? [];
   const room = Math.max(0, Math.min(12, MAX_BRAND_PHOTOS - have.length));
@@ -124,7 +131,7 @@ export async function attachSourceMedia(
   const shots: BrandPhoto[] = [];
   for (const b64 of (found.screenshots ?? []).slice(0, Math.max(0, room - fromSite.length))) {
     try {
-      shots.push(await saveBrandPhoto(s, model.id, Buffer.from(b64, "base64"), "instagram"));
+      shots.push(await saveBrandPhoto(s, model.id, Buffer.from(b64, "base64"), found.screenshotSource ?? "instagram"));
     } catch (err) {
       console.warn("[brand photos]", err instanceof Error ? err.message : err);
     }

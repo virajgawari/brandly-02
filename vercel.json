@@ -13,14 +13,6 @@
     {
       "path": "/api/cron/learn",
       "schedule": "30 3 * * 1"
-    },
-    {
-      "path": "/api/cron/publish",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/automations",
-      "schedule": "*/15 * * * *"
     }
   ]
 }

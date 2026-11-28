@@ -37,7 +37,7 @@ Target users are small businesses, marketers and agencies who need consistent so
 3. **Schedule and publish.** Posts are saved, shown on the calendar and queued. A cron job (every 5 minutes) publishes them through Postiz or n8n, and connections and secrets are stored per workspace.
 4. **Learn.** Metrics, edits, feedback and top-post stats flow back through the weekly learn cron and the agent to improve later generations.
 
-**Scheduled work (Vercel cron)**: `schedule` daily, `drain` daily (jobs queue), `learn` weekly, `publish` every 5 minutes, `automations` every 15 minutes.
+**Scheduled work**: Vercel cron runs `schedule` daily, `drain` daily (jobs queue) and `learn` weekly. An external scheduler calls `publish` every 5 minutes and `automations` every 15 minutes.
 
 **UI routes**: onboarding, brand, composer, calendar, catalog, automation, data, sprint, assets, settings, admin, auth pages, and legal pages.
 

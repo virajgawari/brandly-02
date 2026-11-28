@@ -78,7 +78,7 @@ export function scoreFeedMatch(post: FeedPostInput, playbook: Playbook | undefin
   const emoji = emojiRange(playbook.formatting?.emoji ?? "");
   if (emoji) {
     const n = (caption.match(EMOJI_RE) ?? []).length;
-    parts.push({ id: "emoji", label: "Emoji", score: distanceScore(n, emoji.min, emoji.max, 25), detail: `${n} emoji; the feed uses ${playbook.formatting.emoji.trim().slice(0, 80)}.` });
+    parts.push({ id: "emoji", label: "Emoji", score: distanceScore(n, emoji.min, emoji.max, 25), detail: `${n} emoji; the feed uses ${(playbook.formatting?.emoji ?? "").trim().slice(0, 80)}.` });
   }
 
   const breaks = wantsLineBreaks(playbook.formatting?.lineBreaks ?? "");

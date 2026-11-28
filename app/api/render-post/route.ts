@@ -5,6 +5,7 @@ import { recentPosts } from "@/lib/content/history";
 import { errorResponse } from "@/lib/db/session";
 import { requireAi } from "@/lib/db/budget";
 import { trustedModel } from "@/lib/db/brands";
+import { fixLayout } from "@/lib/render/fix-layout";
 import { layoutKitOf } from "@/lib/render/kit";
 import { museEnabled } from "@/lib/render/muse";
 import { encodeForUpload, type EncodedImage, fillSlidePhotos, generatePhoto, generateSlidePhotos, loadPhotoRefs, loadSlidePhotos, loadVisuals, pickBrandPhotos, resolvePhoto, storeRendered, type PhotoRef } from "@/lib/render/media";
@@ -50,11 +51,12 @@ export async function POST(req: NextRequest) {
     const kit = layoutKitOf(model)!;
     const history = await recentPosts(model.id, 15, session);
     const wanted = b.layout ?? b.post.layout;
-    const layout: LayoutId =
+    const chosen: LayoutId =
       wanted && (LAYOUT_IDS as readonly string[]).includes(wanted)
         ? wanted
         : chooseLayout(kit, b.post.format, history, { textOnImagePct: model?.expression.styleGuide?.textOnImagePct, carousel: (b.post.slides?.length ?? 0) >= 2 });
 
+    let layout = chosen;
     const aspect = size === "1080x1080" ? "1:1" : size === "1080x1920" ? "9:16" : "4:5";
     const isProduct = layout === "product-cover";
     let photo: PhotoRef | undefined = typeof b.photo === "object" && b.photo ? b.photo : undefined;
@@ -88,12 +90,19 @@ export async function POST(req: NextRequest) {
     else if ((b.photo === undefined || b.photo === "auto") && layoutNeedsPhoto(layout)) photo = await resolvePhoto(session, model, b.post, history, aspect);
     const photoError = b.photo === "generate" && !isProduct && (isCarousel ? noneGenerated : !photo) ? "Couldn't make new photos, try again." : undefined;
 
+    // Rule-based tidy-up (no LLM): drop a photo layout when no photo exists, trim copy that would overflow.
+    let post = b.post;
+    if (!isProduct && !isCarousel) {
+      const fixed = fixLayout({ layout, allowed: kit.layouts, hasPhoto: !!photo, headline: post.headline ?? "", subline: post.subline, itemCount: post.items?.length, hasStat: !!post.stat });
+      layout = fixed.layout;
+      post = { ...post, headline: fixed.headline, subline: fixed.subline };
+    }
     const visuals = await loadVisuals(session, model, isCarousel ? undefined : photo);
     const carouselPhotos = isCarousel && slideRefs?.length ? await loadPhotoRefs(session, model, slideRefs) : undefined;
     const slidePhotos = isProduct ? await loadSlidePhotos(session, model, (b.post.slides ?? []).map((s) => s.photoPath)) : undefined;
     const photos = slidePhotos?.filter((x): x is string => !!x).slice(0, 4);
     const { data: ws } = await session.db.from("workspaces").select("ai_watermark").eq("id", session.workspaceId).maybeSingle();
-    const pngs = await renderPost({ watermark: !!ws?.ai_watermark, model, post: b.post, layout, size, logo: visuals.logo, logoTone: visuals.logoTone, logoBoxed: visuals.logoBoxed, photo: isCarousel ? carouselPhotos?.[0] : visuals.photo, photos, slidePhotos: isCarousel ? carouselPhotos : slidePhotos, show });
+    const pngs = await renderPost({ watermark: !!ws?.ai_watermark, model, post, layout, size, photoLuma: visuals.photoLuma, logo: visuals.logo, logoTone: visuals.logoTone, logoBoxed: visuals.logoBoxed, photo: isCarousel ? carouselPhotos?.[0] : visuals.photo, photos, slidePhotos: isCarousel ? carouselPhotos : slidePhotos, show });
 
     // Any AI-generated photo makes the image synthetic: embed C2PA Content Credentials (the visible stamp is opt-in).
     const synthetic = photo?.kind === "generated" || !!slideRefs?.some((r) => r.kind === "generated");

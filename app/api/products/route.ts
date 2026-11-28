@@ -43,6 +43,10 @@ export async function POST(req: NextRequest) {
       .select("*")
       .single();
     if (error) throw error;
+    if (clean.image_paths?.length && data.cutout_status !== "ready") {
+      const { enqueueAndKick } = await import("@/lib/jobs/queue");
+      await enqueueAndKick({ kind: "product.cutout", workspaceId: s.workspaceId, brandId: data.brand_id, payload: { productId: data.id }, dedupeKey: `cutout:${data.id}`, createdBy: s.userId, maxAttempts: 2 }).catch((e) => console.error("[products] cutout enqueue failed", e));
+    }
     return NextResponse.json({ product: toProduct(data as Row) });
   } catch (err) {
     return errorResponse(err, "product create");

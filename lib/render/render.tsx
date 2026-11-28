@@ -12,7 +12,7 @@ export type RenderSize = "1080x1350" | "1080x1080" | "1080x1920";
 
 export interface RenderInput {
   model: BrandModel;
-  post: Pick<GeneratedPost, "headline" | "subline" | "cta" | "items" | "stat" | "slides" | "caption">;
+  post: Pick<GeneratedPost, "headline" | "subline" | "cta" | "items" | "stat" | "slides" | "caption" | "pillar">;
   layout: LayoutId;
   size: RenderSize;
   /** Data URIs, already resolved. */
@@ -20,6 +20,8 @@ export interface RenderInput {
   logoTone?: "light" | "dark";
   logoBoxed?: boolean;
   photo?: string;
+  /** Mean brightness of the photo's lower 40% (0-255), for the scrim. */
+  photoLuma?: number;
   /** Product carousel: cover collage photos. */
   photos?: string[];
   /** Product carousel: one photo per slide (index matches post.slides; cover and CTA are undefined). */
@@ -51,8 +53,10 @@ export async function renderPost(raw: RenderInput): Promise<Buffer[]> {
     textBox: model.expression.styleGuide?.textBox,
     width,
     height,
+    kicker: post.pillar,
+    photoLuma: input.photoLuma,
   };
-  const headline = input.show?.headline === false ? "" : (post.headline || post.caption?.split(/[.!?\n]/)[0] || model.name).slice(0, 140);
+  const headline = input.show?.headline === false ? "" : (post.headline || post.caption?.split(/[.!?\n]/)[0] || model.name).slice(0, 52);
 
   const frames: LayoutProps[] = [];
   const frameLayouts: LayoutId[] = [];

@@ -27,6 +27,15 @@ describe("feedRules", () => {
     expect(text).toContain("a press release");
   });
   it("is versioned", () => {
-    expect(POST_PROMPT_VERSION).toBe("generate-post@7");
+    expect(POST_PROMPT_VERSION).toBe("generate-post@9");
+  });
+});
+
+describe("isLazyVariant", () => {
+  it("rejects pointers and echoed instructions, keeps real captions", async () => {
+    const { isLazyVariant } = await import("@/lib/content/prompt");
+    expect(isLazyVariant("Caption with hashtags and CTA, concise paragraphs, 2200 char limit")).toBe(true);
+    expect(isLazyVariant("same as above")).toBe(true);
+    expect(isLazyVariant("Step into everyday comfort with our wool runners.")).toBe(false);
   });
 });

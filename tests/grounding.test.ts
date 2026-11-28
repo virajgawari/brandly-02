@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groundingIssues } from "@/lib/judge/grounding";
+import { groundingIssues, stripUnverified, unverifiedProducts } from "@/lib/judge/grounding";
 
 const FACTS = `Brand: Blue Tokai. Fresh specialty coffee, roasted in India. Promise: Coffee roasted within days, not months.
 Products: Freshly roasted coffee beans, cold brew and cafes. Sample line: "Roasted on Monday. At your door by Thursday."
@@ -70,5 +70,18 @@ describe("groundingIssues", () => {
     expect(ok).toEqual([]);
     const sample = groundingIssues({ caption: 'Our line: "Roasted on Monday. At your door by Thursday."' }, FACTS);
     expect(sample).toEqual([]);
+  });
+});
+
+describe("unverifiedProducts", () => {
+  const catalog = ["Pegasus 41", "Vomero"];
+  it("flags an invented model name", () => {
+    expect(unverifiedProducts(["Meet the Nike Air Zoom Dawn today"], "Nike", catalog)).toEqual(["Nike Air Zoom Dawn"]);
+  });
+  it("passes verified products, brand-only and category copy", () => {
+    expect(unverifiedProducts(["The Nike Pegasus 41 is here", "Nike Vomero for easy miles", "Nike running shoes", "Nike"], "Nike", catalog)).toEqual([]);
+  });
+  it("strips leftovers to the brand name", () => {
+    expect(stripUnverified("Try the Nike Air Zoom Dawn now", ["Nike Air Zoom Dawn"], "Nike")).toBe("Try the Nike now");
   });
 });

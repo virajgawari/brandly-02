@@ -160,3 +160,78 @@ export async function topStylePaths(db: Client, workspaceId: string, brandId: st
     .limit(n * 2);
   return (data ?? []).flatMap((r) => (r.stored_paths ?? []).slice(0, 1)).slice(0, n);
 }
+
+export interface SocialPostView extends TopPostView {
+  hashtags: string[];
+  views: number;
+  score: number;
+  isTop: boolean;
+  images: string[];
+}
+
+/** Every scraped post (best first) with signed image URLs, for the Data page. */
+export async function listAllSocialPosts(db: Client, workspaceId: string, brandId: string): Promise<SocialPostView[]> {
+  const { data } = await db
+    .from("social_posts")
+    .select("external_id, type, caption, hashtags, likes, comments, views, posted_at, stored_paths, media_urls, engagement_score, is_top")
+    .eq("workspace_id", workspaceId)
+    .eq("brand_id", brandId)
+    .order("engagement_score", { ascending: false })
+    .limit(200);
+  return Promise.all(
+    (data ?? []).map(async (r): Promise<SocialPostView> => {
+      const paths = ((r.stored_paths ?? []) as string[]).slice(0, 3);
+      const images: string[] = [];
+      for (const path of paths) {
+        const { data: signed } = await db.storage.from("images").createSignedUrl(path, 3600);
+        if (signed?.signedUrl) images.push(signed.signedUrl);
+      }
+      return {
+        id: r.external_id,
+        type: r.type,
+        caption: String(r.caption ?? ""),
+        likes: r.likes ?? 0,
+        comments: r.comments ?? 0,
+        views: r.views ?? 0,
+        postedAt: r.posted_at,
+        hashtags: r.hashtags ?? [],
+        score: Number(r.engagement_score) || 0,
+        isTop: !!r.is_top,
+        images: images.length ? images : ((r.media_urls ?? []) as string[]).slice(0, 1),
+        imageUrl: images[0] ?? ((r.media_urls ?? []) as string[])[0] ?? null,
+      };
+    }),
+  );
+}
+
+export type RefKind = "image" | "carousel";
+
+/** The brand's best real posts of one format: captions to imitate and image paths (carousels keep slide order). */
+export async function loadFormatReferences(db: Client, workspaceId: string, brandId: string, kind: RefKind, n = 4) {
+  const { data } = await db
+    .from("social_posts")
+    .select("id, type, caption, stored_paths, is_top, engagement_score")
+    .eq("workspace_id", workspaceId)
+    .eq("brand_id", brandId)
+    .order("engagement_score", { ascending: false })
+    .limit(60);
+  const rows = data ?? [];
+  const same = rows.filter((r) => r.type === kind);
+  // Fewer than 2 of this format scraped: borrow from the other so the AI still has something real to study.
+  const pool = same.length >= 2 ? same : rows;
+  const picked = pool.slice(0, n);
+  return {
+    matched: same.length >= 2,
+    captions: picked.map((r) => String(r.caption ?? "").trim()).filter(Boolean),
+    /** Same posts with id, engagement and cover path, for art direction. */
+    posts: picked.map((r) => ({
+      id: String(r.id),
+      caption: String(r.caption ?? "").trim(),
+      engagement: Number(r.engagement_score) || 0,
+      kind: String(r.type ?? ""),
+      cover: ((r.stored_paths ?? []) as string[])[0] as string | undefined,
+    })),
+    /** Storage paths per post, cover first. */
+    imagePaths: picked.map((r) => ((r.stored_paths ?? []) as string[]).slice(0, 3)).filter((p) => p.length),
+  };
+}

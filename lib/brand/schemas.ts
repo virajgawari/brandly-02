@@ -227,6 +227,8 @@ export const GeneratedPostSchema = z.object({
   bestTimeToPost: str,
   postType: str,
   platformVariants: z.record(z.string()).catch({}),
+  /** Art direction written in the same call; validated leniently by artFromPost. */
+  art: z.record(z.unknown()).optional().catch(undefined),
 });
 export type GeneratedPostResult = z.infer<typeof GeneratedPostSchema>;
 

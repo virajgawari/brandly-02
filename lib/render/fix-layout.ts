@@ -19,8 +19,9 @@ export interface FixResult {
   changes: string[];
 }
 
-const MAX_HEADLINE = 70;
-const MAX_SUBLINE = 110;
+// Keep in step with MAX_HEADLINE / MAX_SUBLINE in lib/content/prompt.ts (not imported: this file also runs in the browser).
+const MAX_HEADLINE = 52;
+const MAX_SUBLINE = 85;
 const TEXT_LED: LayoutId[] = ["quote", "split", "framed", "big-number", "checklist", "myth-fact"];
 
 function clip(text: string, max: number): string {

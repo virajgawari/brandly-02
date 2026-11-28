@@ -2,13 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, requireSession } from "@/lib/db/session";
 import { enqueueAndKick } from "@/lib/jobs/queue";
 import { apifyEnabled, cleanHandle } from "@/lib/social/apify";
-import { listTopSocialPosts } from "@/lib/social/store";
+import { listAllSocialPosts, listTopSocialPosts } from "@/lib/social/store";
 
 // GET returns the scraped-post count and the top posts (with image URLs) for the brand page.
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const s = await requireSession();
     const { id } = await params;
+    if (req.nextUrl.searchParams.get("all") === "1") {
+      const all = await listAllSocialPosts(s.db, s.workspaceId, id);
+      return NextResponse.json({ enabled: apifyEnabled(), count: all.length, posts: all });
+    }
     return NextResponse.json({ enabled: apifyEnabled(), ...(await listTopSocialPosts(s.db, s.workspaceId, id)) });
   } catch (err) {
     return errorResponse(err, "social posts");

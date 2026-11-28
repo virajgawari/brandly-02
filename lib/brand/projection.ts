@@ -72,15 +72,20 @@ const toneWord = (v: number, neg: string, pos: string) =>
   Math.abs(v) < 0.2 ? `balanced between ${neg} and ${pos}` : v < 0 ? (v < -0.6 ? `very ${neg}` : neg) : v > 0.6 ? `very ${pos}` : pos;
 
 function playbookLines(p: Playbook): string {
+  // Playbooks saved by older versions can lack any of these fields.
+  const pillars = p.pillars ?? [];
+  const adjectives = p.adjectives ?? [];
+  const hooks = p.hookFormulas ?? [];
+  const blacklist = p.blacklist ?? [];
+  const f = p.formatting;
   return [
-    p.pillars.length && `PILLAR SPLIT: ${p.pillars.map((x) => `${x.name} ${x.pct}%`).join(", ")}`,
-    p.adjectives.length && `SOUNDS: ${p.adjectives.join(", ")}${p.neverSoundsLike ? `. NEVER sounds like: ${p.neverSoundsLike}` : ""}`,
-    p.hookFormulas.length && `HOOK PATTERNS: ${p.hookFormulas.join(" | ")}`,
-    (p.formatting.avgWords || p.formatting.lineBreaks || p.formatting.emoji) &&
-      `FORMAT: about ${p.formatting.avgWords || "?"} words. ${p.formatting.lineBreaks} Emoji: ${p.formatting.emoji}`,
+    pillars.length && `PILLAR SPLIT: ${pillars.map((x) => `${x.name} ${x.pct}%`).join(", ")}`,
+    adjectives.length && `SOUNDS: ${adjectives.join(", ")}${p.neverSoundsLike ? `. NEVER sounds like: ${p.neverSoundsLike}` : ""}`,
+    hooks.length && `HOOK PATTERNS: ${hooks.join(" | ")}`,
+    f && (f.avgWords || f.lineBreaks || f.emoji) && `FORMAT: about ${f.avgWords || "?"} words. ${f.lineBreaks ?? ""} Emoji: ${f.emoji ?? ""}`,
     p.cta && `CTA: ${p.cta}`,
     p.hashtagRule && `HASHTAGS: ${p.hashtagRule}`,
-    p.blacklist.length && `NEVER WRITE: ${p.blacklist.join(", ")}`,
+    blacklist.length && `NEVER WRITE: ${blacklist.join(", ")}`,
   ]
     .filter(Boolean)
     .join("\n");

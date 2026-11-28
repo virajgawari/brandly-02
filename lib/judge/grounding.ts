@@ -96,3 +96,41 @@ export function groundingIssues(post: GroundedPost, facts: string): string[] {
 export function groundingFailure(issues: string[]): string {
   return `invented details that are not in the brand context or the request: ${issues.join(", ")}. Remove them or write around them; do not replace them with other made-up details`;
 }
+
+// ── Product names ───────────────────────────────────────────────────────────
+// Brand + capitalised model words ("Nike Air Zoom Dawn") are the classic invention: the model completes a
+// real brand with a plausible SKU. A phrase passes only when it matches the brand's verified catalog.
+
+const words = (s: string) => s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+
+/** Capitalised phrases that lead with the brand name and add words that are not in the verified catalog. */
+export function unverifiedProducts(texts: Array<string | undefined>, brandName: string, catalog: string[]): string[] {
+  const brand = words(brandName);
+  if (!brand.length) return [];
+  const known = catalog.map((c) => words(c).join(" ")).filter(Boolean);
+  const out = new Set<string>();
+  const re = /\b[A-Z][\p{L}\p{N}]*(?:\s+[A-Z0-9][\p{L}\p{N}]*){1,4}\b/gu;
+  for (const text of texts) {
+    for (const m of strip(text ?? "").matchAll(re)) {
+      const w = words(m[0]);
+      const at = w.findIndex((_, i) => brand.every((b, j) => w[i + j] === b));
+      if (at < 0) continue;
+      const rest = w.slice(at + brand.length).join(" ");
+      if (!rest) continue;
+      const phrase = w.slice(at).join(" ");
+      // Fine when the catalog contains the phrase, or the phrase contains a catalog entry (a longer variant).
+      if (known.some((k) => k.includes(rest) || rest.includes(k) || phrase.includes(k))) continue;
+      out.add(m[0].trim());
+    }
+  }
+  return [...out].slice(0, 5);
+}
+
+/** Replaces each unverified product phrase by the brand name so a published post never names a made-up SKU. */
+export function stripUnverified(text: string, phrases: string[], brandName: string): string {
+  return phrases.reduce((t, p) => t.split(p).join(brandName), text);
+}
+
+export function productFailure(phrases: string[]): string {
+  return `product names that are not in the verified catalog: ${phrases.join(", ")}. Name only products from VERIFIED CATALOG; otherwise describe the product category in plain words`;
+}

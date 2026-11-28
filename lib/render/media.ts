@@ -5,12 +5,19 @@ import type { ContentHistory } from "@/lib/content/history";
 import { llmScope } from "@/lib/db/llm-scope";
 import { n8nEnabled, n8nRequest } from "@/lib/n8n";
 import type { GeneratedPost, RenderedMedia } from "@/lib/types";
-import { imageFromStorage, imageFromUrl, imageTone, logoHasWhiteBox } from "./assets";
+import { bottomLuminance, imageFromStorage, imageFromUrl, imageTone, logoHasWhiteBox } from "./assets";
 import { layoutKitOf } from "./kit";
 import { museEnabled, museImage, type MuseAspect } from "./muse";
-import { topStylePaths } from "@/lib/social/store";
+import type { RefKind } from "@/lib/social/store";
 
-const STYLE_REFS = 3;
+/**
+ * Duotone greyscales every photo. It is only a guess from the brand's mood, so a style guide learned
+ * from the brand's real (colour) posts takes priority and photos stay in full colour.
+ */
+function duotoneFor(model: BrandModel, kit: { photoTreatment: string }): string | undefined {
+  if (kit.photoTreatment !== "duotone" || model.expression.styleGuide) return undefined;
+  return model.expression.tokens.color.primary.$value;
+}
 
 export type PhotoRef = NonNullable<RenderedMedia["photo"]>;
 
@@ -51,7 +58,7 @@ function referencePaths(model: BrandModel, post: GeneratedPost): { paths: string
 }
 
 /** Generated photo: Muse Image first (based on the brand's product photos when the post features one), then the n8n workflow. */
-export async function generatePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: MuseAspect, promptOverride?: string): Promise<PhotoRef | undefined> {
+export async function generatePhoto(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: MuseAspect, promptOverride?: string, opts?: { kind?: RefKind; slide?: number }): Promise<PhotoRef | undefined> {
   const imagePrompt = promptOverride ?? post.imagePrompt;
   if (!imagePrompt) return undefined;
 
@@ -59,18 +66,15 @@ export async function generatePhoto(session: Session | null, model: BrandModel, 
     const { paths, notes } = session && !promptOverride ? referencePaths(model, post) : { paths: [], notes: [] };
     const load = async (list: string[]) =>
       session ? (await Promise.all(list.map((p) => imageFromStorage(session.db, "images", p, { maxSide: 1024 })))).filter((x): x is string => !!x) : [];
-    // Style references come first: the brand's best scraped posts, when it has a style guide.
-    const stylePaths = session && model.expression.styleGuide ? await topStylePaths(session.db, session.workspaceId, model.id, STYLE_REFS) : [];
-    const styleRefs = await load(stylePaths);
+    // Style refs were dropped: /images/edits copies the reference's subject and colours, so only product photos go in.
+    // Everything else is a fresh /images/generations call steered by the art-directed prompt plus the style guide.
     const productRefs = await load(paths);
-    const parts = [
-      styleRefs.length && `Adopt the lighting and editorial mood of the first ${styleRefs.length} reference image${styleRefs.length > 1 ? "s" : ""}. Do not copy their subjects, and do not copy their colour treatment: render in full natural colour using the palette described in the scene below, never black and white.`,
-      productRefs.length && `Keep the product from ${styleRefs.length ? "the last reference photo" : "the reference photo"} exactly as it looks (shape, label, colour) and place it in this scene:`,
-      productRefs.length || styleRefs.length ? imagePrompt : "",
-      productRefs.length && notes.length && `Product: ${notes.join("; ")}.`,
-    ].filter(Boolean);
-    const refs = [...styleRefs, ...productRefs];
-    const prompt = refs.length ? parts.join(" ") : imagePrompt;
+    const suffix = model.expression.styleGuide?.promptSuffix?.trim();
+    const styled = suffix && !imagePrompt.includes(suffix.slice(0, 40)) ? `${imagePrompt} ${suffix}` : imagePrompt;
+    const prompt = productRefs.length
+      ? [`Keep the product from the reference photo exactly as it looks (shape, label, colour) and place it in this scene:`, styled, notes.length && `Product: ${notes.join("; ")}.`].filter(Boolean).join(" ")
+      : styled;
+    const refs = productRefs;
     const buf = await llmScope("image", { brandId: model.id }, () => museImage({ prompt, aspect, references: refs }));
     if (buf) {
       if (!session) return undefined; // nowhere to keep it; signed-out use falls through to n8n
@@ -98,7 +102,7 @@ export function slidePrompt(post: GeneratedPost, index: number): string {
 /** One generated photo per carousel slide, made in parallel to stay inside the route's time limit. */
 export async function generateSlidePhotos(session: Session | null, model: BrandModel, post: GeneratedPost, aspect: MuseAspect): Promise<(PhotoRef | undefined)[]> {
   const n = post.slides?.length ?? 0;
-  return Promise.all(Array.from({ length: n }, (_, i) => generatePhoto(session, model, post, aspect, slidePrompt(post, i))));
+  return Promise.all(Array.from({ length: n }, (_, i) => generatePhoto(session, model, post, aspect, slidePrompt(post, i), { kind: "carousel", slide: i })));
 }
 
 /** A photo for every slide: missing ones reuse the photos we have, in turn. Empty when there are none. */
@@ -111,7 +115,7 @@ export function fillSlidePhotos<T>(photos: (T | undefined | null)[], count: numb
 /** Photo data URIs for Satori, with the kit's photo treatment. */
 export async function loadPhotoRefs(session: Session | null, model: BrandModel, refs: PhotoRef[]): Promise<(string | undefined)[]> {
   const kit = layoutKitOf(model)!;
-  const duotone = kit.photoTreatment === "duotone" ? model.expression.tokens.color.primary.$value : undefined;
+  const duotone = duotoneFor(model, kit);
   return Promise.all(
     refs.map((r) =>
       r.kind === "brand"
@@ -138,27 +142,27 @@ export async function resolvePhoto(session: Session | null, model: BrandModel, p
 /** Loads the photo and logo as data URIs for Satori. */
 export async function loadVisuals(session: Session | null, model: BrandModel, photo: PhotoRef | undefined) {
   const kit = layoutKitOf(model)!;
-  const duotone = kit.photoTreatment === "duotone" ? model.expression.tokens.color.primary.$value : undefined;
+  const duotone = duotoneFor(model, kit);
   const [photoUri, logoUri] = await Promise.all([
     !photo
       ? undefined
       : photo.kind === "brand"
       ? session
-        ? imageFromStorage(session.db, "images", photo.ref, { maxSide: 1400, duotone })
+        ? imageFromStorage(session.db, "images", photo.ref, { maxSide: 1400, duotone, upscale: true })
         : undefined
-      : imageFromUrl(photo.ref, { maxSide: 1400, duotone }),
+      : imageFromUrl(photo.ref, { maxSide: 1400, duotone, upscale: true }),
     model.expression.logoPath && session
       ? imageFromStorage(session.db, "logos", model.expression.logoPath, { maxSide: 512, keepAlpha: true })
       : imageFromUrl(model.expression.logoUrl, { maxSide: 512, keepAlpha: true }),
   ]);
-  return { photo: photoUri, logo: logoUri, logoTone: await imageTone(logoUri), logoBoxed: await logoHasWhiteBox(logoUri) };
+  return { photo: photoUri, logo: logoUri, logoTone: await imageTone(logoUri), logoBoxed: await logoHasWhiteBox(logoUri), photoLuma: await bottomLuminance(photoUri) };
 }
 
 /** Product photos (images bucket) as data URIs, in order; missing ones come back undefined. */
 export async function loadSlidePhotos(session: Session | null, model: BrandModel, paths: (string | undefined)[]): Promise<(string | undefined)[]> {
   if (!session) return paths.map(() => undefined);
   const kit = layoutKitOf(model)!;
-  const duotone = kit.photoTreatment === "duotone" ? model.expression.tokens.color.primary.$value : undefined;
+  const duotone = duotoneFor(model, kit);
   return Promise.all(paths.map((p) => (p ? imageFromStorage(session.db, "images", p, { maxSide: 1400, duotone }) : Promise.resolve(undefined))));
 }
 

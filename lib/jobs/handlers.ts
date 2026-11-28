@@ -69,8 +69,33 @@ async function socialScrape(job: JobRow) {
   }
 }
 
+/** Writes one post (copy + art direction) off the HTTP request, so a slow model never hits the route's time limit. */
+async function generatePostJob(job: JobRow) {
+  const { generatePost } = await import("@/lib/content/generate");
+  const input = job.payload.input as Record<string, unknown> | undefined;
+  if (!input) throw new Error("generate.post needs an input.");
+  return generatePost({ ...(input as object), feature: "generate-post" } as Parameters<typeof generatePost>[0]);
+}
+
+/** Makes a product's clean cutout ahead of time, so the first scene render needs only one Muse call. */
+async function productCutoutJob(job: JobRow) {
+  const productId = job.payload.productId;
+  if (typeof productId !== "string") throw new Error("product.cutout needs a productId.");
+  const { adminClient } = await import("@/lib/supabase/admin");
+  const db = adminClient();
+  if (!db) throw new Error("Needs SUPABASE_SECRET_KEY.");
+  // Service role bypasses RLS: confirm the product belongs to the job's workspace first.
+  const { data } = await db.from("products").select("id").eq("id", productId).eq("workspace_id", job.workspace_id).maybeSingle();
+  if (!data) throw new Error("Product not found.");
+  const { createProductCutout } = await import("@/lib/images/product-composite");
+  const path = await createProductCutout({ db, userId: job.created_by ?? "", workspaceId: job.workspace_id, role: "service" }, productId);
+  return { path: path ?? null };
+}
+
 export const HANDLERS: Record<string, JobHandler> = {
+  "product.cutout": productCutoutJob,
   "social.scrape": socialScrape,
+  "generate.post": generatePostJob,
   // Used by tests: returns its payload, or throws when payload.fail is true.
   "test.echo": async (job) => {
     if (job.payload.fail === true) throw new Error("test.echo asked to fail");

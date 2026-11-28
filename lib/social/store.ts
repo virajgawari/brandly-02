@@ -210,7 +210,7 @@ export type RefKind = "image" | "carousel";
 export async function loadFormatReferences(db: Client, workspaceId: string, brandId: string, kind: RefKind, n = 4) {
   const { data } = await db
     .from("social_posts")
-    .select("type, caption, stored_paths, is_top")
+    .select("id, type, caption, stored_paths, is_top, engagement_score")
     .eq("workspace_id", workspaceId)
     .eq("brand_id", brandId)
     .order("engagement_score", { ascending: false })
@@ -223,6 +223,14 @@ export async function loadFormatReferences(db: Client, workspaceId: string, bran
   return {
     matched: same.length >= 2,
     captions: picked.map((r) => String(r.caption ?? "").trim()).filter(Boolean),
+    /** Same posts with id, engagement and cover path, for art direction. */
+    posts: picked.map((r) => ({
+      id: String(r.id),
+      caption: String(r.caption ?? "").trim(),
+      engagement: Number(r.engagement_score) || 0,
+      kind: String(r.type ?? ""),
+      cover: ((r.stored_paths ?? []) as string[])[0] as string | undefined,
+    })),
     /** Storage paths per post, cover first. */
     imagePaths: picked.map((r) => ((r.stored_paths ?? []) as string[]).slice(0, 3)).filter((p) => p.length),
   };

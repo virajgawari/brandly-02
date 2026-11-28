@@ -127,5 +127,6 @@ export async function runStages(
   // Raw website evidence is large and already summarised in model.evidence.
   delete output.website;
   delete output.visualPre;
+  delete output.visualPending;
   return { model, findings: [...findings.values()], issues, applied, skippedLocked, output };
 }

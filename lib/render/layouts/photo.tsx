@@ -1,6 +1,6 @@
 // Photo-led layouts: photo + band, full-bleed, split, framed product.
 import { readableOn } from "@/lib/brand/color";
-import { AccentMark, CornerLogo, Cta, edgePad, Frame, Headline, Logo, logoSpace, PAD, Photo, scheme, Subline, textBoxStyle, type LayoutProps } from "./shared";
+import { AccentMark, CornerLogo, Cta, edgePad, Frame, Headline, Kicker, Logo, logoSpace, PAD, Photo, Scrim, scheme, Subline, textBoxStyle, type LayoutProps } from "./shared";
 
 /** Photo fills the frame; the headline sits directly on its calm lower area with only a soft fade, no card or band. */
 export function PhotoBand(p: LayoutProps) {
@@ -8,21 +8,11 @@ export function PhotoBand(p: LayoutProps) {
   return (
     <Frame bg="#111111">
       <Photo p={p} style={{ position: "absolute", top: 0, left: 0, width: p.width, height: p.height }} />
-      <div
-        style={{
-          display: "flex",
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: p.width,
-          height: p.height,
-          backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0) 52%, rgba(0,0,0,0.55) 100%)",
-        }}
-      />
+      <Scrim p={p} />
       <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", width: "100%", height: "100%", padding: PAD, paddingBottom: PAD + logoSpace(p, "bottom") }}>
-        <div style={{ display: "flex", width: 72, height: 6, marginBottom: 28, background: s.accent === "#111111" ? p.colors.accent : s.accent, borderRadius: 3 }} />
+        <Kicker p={p} color={s.accent === "#111111" ? p.colors.accent : s.accent} />
         <div style={{ display: "flex", flexDirection: "column", ...textBoxStyle(p) }}>
-          <Headline p={p} color="#FFFFFF" size={Math.min(92, Math.round(5200 / Math.max(p.headline.length, 20)) + 24)} />
+          <Headline p={p} color="#FFFFFF" size={Math.min(96, Math.round(5200 / Math.max(p.headline.length, 20)) + 28)} accent={p.colors.accent} />
           <Subline p={p} color="rgba(255,255,255,0.88)" size={34} />
         </div>
       </div>
@@ -38,21 +28,11 @@ export function FullBleed(p: LayoutProps) {
   return (
     <Frame bg="#111111">
       <Photo p={p} style={{ position: "absolute", top: 0, left: 0, width: p.width, height: p.height }} />
-      <div
-        style={{
-          display: "flex",
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: p.width,
-          height: p.height,
-          backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,0.78) 100%)",
-        }}
-      />
+      <Scrim p={p} />
       <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", width: "100%", height: "100%", padding: PAD, paddingBottom: PAD + logoSpace(p, "bottom") }}>
-        <AccentMark p={p} color={s.accent === "#111111" ? p.colors.accent : s.accent} />
+        {p.kicker ? <Kicker p={p} color={s.accent === "#111111" ? p.colors.accent : s.accent} /> : <AccentMark p={p} color={s.accent === "#111111" ? p.colors.accent : s.accent} />}
         <div style={{ display: "flex", flexDirection: "column", ...textBoxStyle(p) }}>
-          <Headline p={p} color="#FFFFFF" />
+          <Headline p={p} color="#FFFFFF" accent={p.colors.accent} />
           <Subline p={p} color="rgba(255,255,255,0.85)" />
         </div>
       </div>
@@ -71,7 +51,8 @@ export function Split(p: LayoutProps) {
       <Photo p={p} style={half} />
       <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", ...half, padding: PAD, ...(vertical ? { paddingBottom: PAD + logoSpace(p, "bottom") } : edgePad(p)) }}>
         <AccentMark p={p} color={s.accent} />
-        <Headline p={p} color={s.fg} size={Math.min(76, Math.round(4200 / Math.max(p.headline.length, 18)) + 18)} />
+        <Kicker p={p} color={s.accent} />
+        <Headline p={p} color={s.fg} size={Math.min(76, Math.round(4200 / Math.max(p.headline.length, 18)) + 18)} accent={s.accent} />
         {p.items?.length ? (
           <div style={{ display: "flex", flexDirection: "column", marginTop: 28 }}>
             {p.items.slice(0, 2).map((it, i) => (

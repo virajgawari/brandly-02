@@ -5,12 +5,10 @@ import type { ContentHistory } from "@/lib/content/history";
 import { llmScope } from "@/lib/db/llm-scope";
 import { n8nEnabled, n8nRequest } from "@/lib/n8n";
 import type { GeneratedPost, RenderedMedia } from "@/lib/types";
-import { imageFromStorage, imageFromUrl, imageTone, logoHasWhiteBox } from "./assets";
+import { bottomLuminance, imageFromStorage, imageFromUrl, imageTone, logoHasWhiteBox } from "./assets";
 import { layoutKitOf } from "./kit";
 import { museEnabled, museImage, type MuseAspect } from "./muse";
-import { loadFormatReferences, topStylePaths, type RefKind } from "@/lib/social/store";
-
-const STYLE_REFS = 3;
+import type { RefKind } from "@/lib/social/store";
 
 /**
  * Duotone greyscales every photo. It is only a guess from the brand's mood, so a style guide learned
@@ -68,30 +66,15 @@ export async function generatePhoto(session: Session | null, model: BrandModel, 
     const { paths, notes } = session && !promptOverride ? referencePaths(model, post) : { paths: [], notes: [] };
     const load = async (list: string[]) =>
       session ? (await Promise.all(list.map((p) => imageFromStorage(session.db, "images", p, { maxSide: 1024 })))).filter((x): x is string => !!x) : [];
-    // Style references come first: the brand's best scraped posts, when it has a style guide.
-    let stylePaths: string[] = [];
-    if (session && model.expression.styleGuide) {
-      // Study the brand's real posts of this format; a carousel slide follows the same slide of its best carousels.
-      const kind = opts?.kind ?? "image";
-      const refs = await loadFormatReferences(session.db, session.workspaceId, model.id, kind, STYLE_REFS).catch(() => null);
-      const slide = opts?.slide ?? 0;
-      stylePaths = (refs?.imagePaths ?? []).map((p) => (kind === "carousel" ? (p[Math.min(slide, p.length - 1)] ?? p[0]) : p[0])).slice(0, STYLE_REFS);
-      if (!stylePaths.length) stylePaths = await topStylePaths(session.db, session.workspaceId, model.id, STYLE_REFS);
-    }
-    // No scraped posts yet: the brand's own lifestyle photos show its look instead.
-    if (session && !stylePaths.length) {
-      stylePaths = (model.expression.photos ?? []).filter((p) => p.role !== "product").slice(0, 2).map((p) => p.path);
-    }
-    const styleRefs = await load(stylePaths);
+    // Style refs were dropped: /images/edits copies the reference's subject and colours, so only product photos go in.
+    // Everything else is a fresh /images/generations call steered by the art-directed prompt plus the style guide.
     const productRefs = await load(paths);
-    const parts = [
-      styleRefs.length && `Study the first ${styleRefs.length} reference image${styleRefs.length > 1 ? "s" : ""}, which are this brand's real top posts of the same format: adopt their lighting, framing, composition and editorial mood. Do not copy their subjects, and do not copy their colour treatment: render in full natural colour using the palette described in the scene below, never black and white.`,
-      productRefs.length && `Keep the product from ${styleRefs.length ? "the last reference photo" : "the reference photo"} exactly as it looks (shape, label, colour) and place it in this scene:`,
-      productRefs.length || styleRefs.length ? imagePrompt : "",
-      productRefs.length && notes.length && `Product: ${notes.join("; ")}.`,
-    ].filter(Boolean);
-    const refs = [...styleRefs, ...productRefs];
-    const prompt = refs.length ? parts.join(" ") : imagePrompt;
+    const suffix = model.expression.styleGuide?.promptSuffix?.trim();
+    const styled = suffix && !imagePrompt.includes(suffix.slice(0, 40)) ? `${imagePrompt} ${suffix}` : imagePrompt;
+    const prompt = productRefs.length
+      ? [`Keep the product from the reference photo exactly as it looks (shape, label, colour) and place it in this scene:`, styled, notes.length && `Product: ${notes.join("; ")}.`].filter(Boolean).join(" ")
+      : styled;
+    const refs = productRefs;
     const buf = await llmScope("image", { brandId: model.id }, () => museImage({ prompt, aspect, references: refs }));
     if (buf) {
       if (!session) return undefined; // nowhere to keep it; signed-out use falls through to n8n
@@ -165,14 +148,14 @@ export async function loadVisuals(session: Session | null, model: BrandModel, ph
       ? undefined
       : photo.kind === "brand"
       ? session
-        ? imageFromStorage(session.db, "images", photo.ref, { maxSide: 1400, duotone })
+        ? imageFromStorage(session.db, "images", photo.ref, { maxSide: 1400, duotone, upscale: true })
         : undefined
-      : imageFromUrl(photo.ref, { maxSide: 1400, duotone }),
+      : imageFromUrl(photo.ref, { maxSide: 1400, duotone, upscale: true }),
     model.expression.logoPath && session
       ? imageFromStorage(session.db, "logos", model.expression.logoPath, { maxSide: 512, keepAlpha: true })
       : imageFromUrl(model.expression.logoUrl, { maxSide: 512, keepAlpha: true }),
   ]);
-  return { photo: photoUri, logo: logoUri, logoTone: await imageTone(logoUri), logoBoxed: await logoHasWhiteBox(logoUri) };
+  return { photo: photoUri, logo: logoUri, logoTone: await imageTone(logoUri), logoBoxed: await logoHasWhiteBox(logoUri), photoLuma: await bottomLuminance(photoUri) };
 }
 
 /** Product photos (images bucket) as data URIs, in order; missing ones come back undefined. */

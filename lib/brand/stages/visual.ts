@@ -27,6 +27,7 @@ const PHOTO_CONCURRENCY = 5;
 export type VisualInput = IngestOutput & {
   /** Result of the same work started during the crawl (see `startVisual`). */
   visualPre?: VisualResult;
+  visualPending?: Promise<VisualResult>;
   /** Data URI of a logo the owner uploaded. Preferred over the one found on the website. */
   logoImage?: string;
 };
@@ -104,6 +105,10 @@ export const visualStage: StageDefinition<VisualInput> = {
   async run(_model, input, { report }) {
     // Already done while the crawl was running.
     if (input.visualPre) return { patches: [], output: input.visualPre.output as Record<string, unknown> };
+    if (input.visualPending) {
+      const r = await Promise.race([input.visualPending, new Promise<undefined>((res) => setTimeout(() => res(undefined), 15_000))]);
+      return { patches: [], output: (r?.output ?? {}) as Record<string, unknown> };
+    }
     const site = input.website;
     if (!site && !input.logoImage) return { patches: [], output: {} };
     const r = await analyseVisual(input.logoImage ?? site?.logoUrl, input.photoUrls ?? [], !!input.logoImage, report);

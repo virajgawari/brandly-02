@@ -1,36 +1,57 @@
-// Art-director step: turns the brand model, its best past posts and the finished copy into one
-// rich image prompt. Runs after the copy is written; any failure falls back to imagePromptFromBrief.
+// Art direction, written in the same LLM call as the copy (so it sees the same verified catalog and cannot
+// amplify an invented product name). Any failure falls back to imagePromptFromBrief.
 import { z } from "zod";
-import type { BrandModel } from "@/lib/brand/model";
+import type { BrandModel, LayoutId } from "@/lib/brand/model";
+import { describeAudience } from "@/lib/brand/audience";
 import { paletteToWords } from "@/lib/brand/color";
-import type { BrandDNA, GeneratedPost } from "@/lib/types";
+import type { BrandDNA } from "@/lib/types";
 
-export const ART_DIRECTOR_VERSION = "art-director@1";
+/** Where the text lands for each layout, and what that means for the photo. The layout is chosen BEFORE the photo is described. */
+const FULL_BLEED_ZONE = "lower 40% of the frame";
+const OUTSIDE_ZONE = "none: the text sits in a separate panel outside the photo";
 
-export const ART_DIRECTOR_SYSTEM = `You are a Senior Brand Art Director and Commercial Visual Designer. You synthesize a brand's identity, its highest-performing past Instagram posts and a copy brief into one richly detailed image generation prompt.
+export function layoutLock(layout?: LayoutId): { zone: string; directive: string } {
+  switch (layout) {
+    case "full-bleed":
+    case "photo-band":
+      return {
+        zone: FULL_BLEED_ZONE,
+        directive: `Subject sits in the upper-centre 60% of the frame. The ${FULL_BLEED_ZONE} must be clean, uncluttered negative space with soft out-of-focus depth, because the headline is placed there.`,
+      };
+    case "split":
+    case "framed":
+      return {
+        zone: OUTSIDE_ZONE,
+        directive: "Full-frame, balanced editorial photograph with clean margins. Text goes in a separate panel outside the photo, so compose the subject centrally and do not leave an empty zone.",
+      };
+    default:
+      return {
+        zone: FULL_BLEED_ZONE,
+        directive: `Keep the ${FULL_BLEED_ZONE} calm and uncluttered; the subject sits in the upper-centre of the frame.`,
+      };
+  }
+}
 
-INPUTS: BRAND_MODEL (name, industry, vibe, exact palette with hex codes, typography style, signature motifs/products, visual prohibitions), PAST_TOP_POSTS (what the best posts looked like and how they did), TEXT_CONTENT (the exact headline, subheadline, supporting info and CTA).
+/** The art-direction instructions, appended to the copywriter prompt so one call writes copy and image prompt together. */
+export function artSection(layout?: LayoutId): string {
+  const lock = layoutLock(layout);
+  return `ART DIRECTION (also fill the "art" object; this is the image prompt for the photo behind the text):
+- LAYOUT LOCK (already decided, do not change): ${lock.directive}
+- Build on the archetype of the TOP POSTS / STYLE ANCHORS (why they worked, which visual subjects win), but lift the execution to agency-grade editorial photography: better light, depth, zero clutter.
+- Direct the scene precisely: who appears (match the AUDIENCE), expression, wardrobe, natural pose, lens and framing (for example 50mm medium shot, eye level), environment, lighting mood. If the brand does not show people, direct a product or object scene with the same precision.
+- Use only real products from VERIFIED CATALOG; otherwise show the product category generically. Never invent a product, model name or logo.
+- Describe colour in photographic language only (materials, surfaces, wardrobe, props, light) using the colour words and SURFACE in the ART BRAND block. NEVER write hex codes or "#" values in compiled_image_prompt.
+- The headline, subline and CTA are added later by the design system, never drawn by the image model. Do NOT ask for a card, box, caption or lettering.`;
+}
 
-DIRECTIVES
-1. ELEVATE PAST WINNERS, DO NOT COPY FLAWS: work out why the top posts worked (relatable human subject, high-contrast split layout, bold data callout). Keep that structural archetype and subject appeal, but lift the execution to agency-grade editorial photography and graphic design: better light, intentional grid alignment, richer texture, zero clutter.
-2. EXPLICIT SCENE AND CHARACTER DIRECTION: never write "a happy person using a laptop". Give demographics, authentic expression, wardrobe in the brand palette, natural pose, lens and framing (for example 50mm medium shot, eye level), environment depth and lighting mood. If the brand does not show people, direct a product or object scene with the same precision.
-3. BRAND GROUNDING: use concrete brand artifacts from the model: real product silhouettes, signature materials, recurring motifs, environment cues of its niche. Never invent products the brand does not have.
-4. TYPOGRAPHY AND LAYOUT: quote the exact wording of every text layer. Give font style, text colour, alignment and background treatment (for example a semi-transparent dark frosted card) so the text is clearly legible. Reserve clean negative space so text never sits on faces or busy texture.
-5. PALETTE: name colours with evocative names and hex values (for example "deep forest green #1B4332"), balanced 60% dominant, 30% secondary, 10% accent.
+export const ART_SECTION = artSection();
 
-IMPORTANT: the text layers are added later by the design system, never by the image model. In compiled_image_prompt describe only the clean, empty zone reserved for text (and the tone it needs, for example a calm dark area behind it); do NOT ask the image model to draw a card, box, caption or any lettering. Put the typography detail (font style, colour, alignment, box) only in layout_archetype. negative_space_zone must agree with the subject placement: if text goes left, the subject sits right, and never centre the subject.
-
-Do not invent facts, numbers, product names or text beyond TEXT_CONTENT and BRAND_MODEL.
-
-OUTPUT: strict JSON with exactly these keys:
-{
-  "inspired_by_post_id": "id of the past post whose archetype you built on, or empty string",
-  "layout_archetype": "string",
-  "negative_space_zone": "string, for example left 45% of frame, top third",
-  "compiled_image_prompt": "one cohesive 140-200 word prompt combining Scene, Characters, Brand Elements, Palette, Lighting, Typography and Layout",
-  "overlay_text_layers": { "headline": "", "subhead": "", "supporting_bullets": [""], "cta": "" },
-  "negative_prompt": "elements to exclude: distorted text, extra fingers, cluttered background, low-res stock look, watermark"
-}`;
+export const ART_JSON = `"art": {
+    "inspired_by_post_id": "id of the TOP POST whose visual archetype you built on, or empty string",
+    "layout_archetype": "short, for example split layout, subject right",
+    "compiled_image_prompt": "one cohesive 140-200 word photo prompt: scene, characters, brand props and surfaces, colour in words (no hex), lighting, and the clean text zone from the LAYOUT LOCK",
+    "negative_prompt": "distorted text, extra fingers, cluttered background, low-res stock look, watermark"
+  },`;
 
 export const ArtDirectionSchema = z.object({
   inspired_by_post_id: z.string().default(""),
@@ -50,41 +71,68 @@ export type ArtDirection = z.infer<typeof ArtDirectionSchema>;
 export interface TopPostRef {
   id: string;
   caption: string;
+  /** Engagement score from the scrape. Optional. */
+  engagement?: number;
   /** Engagement summary, for example "1.2k likes, 48 comments". Optional. */
   metrics?: string;
   kind?: string;
+  /** What the photo shows, from the brand's vision tags (subject, setting, style). */
+  visualTags?: string[];
 }
 
-/** The user message: brand model, past winners, copy. Compact on purpose (the free LLM quota is small). */
-export function buildArtDirectorUser(args: { post: GeneratedPost; model?: BrandModel; dna?: BrandDNA; topPosts: TopPostRef[]; brandName?: string }): string {
-  const { post, model, dna, topPosts } = args;
+const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n).replace(/\s+\S*$/, "")}…` : s);
+
+/** Compact brand visual facts for the art-direction part of the prompt (colour words, surfaces, motifs, people, audience). */
+export function artBrandBlock(args: { model?: BrandModel; dna?: BrandDNA; brandName?: string; topPosts?: TopPostRef[] }): string {
+  const { model, dna } = args;
   const c = model?.expression.tokens.color;
   const hexes = c ? [c.primary.$value, c.secondary.$value, c.accent.$value] : dna ? [dna.colors.primary, dna.colors.secondary, dna.colors.accent] : [];
-  const roles = ["Primary", "Secondary", "Accent"];
+  const roles = ["Dominant (60%)", "Secondary (30%)", "Accent (10%)"];
   const guide = model?.expression.styleGuide;
   const tokens = model?.expression.tokens;
+  const neutral = c?.neutral?.$value;
+  // Tags the vision model wrote for the brand's own photos: the props, settings and looks it already uses.
+  const photoTags = (model?.expression.photos ?? [])
+    .flatMap((p) => p.tags ?? [])
+    .flatMap((t) => [t.subject, t.setting, t.style])
+    .filter(Boolean);
+  const motifs = [...new Set([...(model?.expression.distinctiveAssets ?? []), ...photoTags])].slice(0, 8);
   const brand = {
     name: args.brandName ?? model?.name ?? dna?.brandName ?? "",
     industry: model?.strategy?.industry ?? model?.strategy?.category ?? "",
+    audience: model?.strategy?.audience ? describeAudience(model.strategy.audience) : dna?.target_audience ?? "",
     vibe: (model?.content.vibe ?? dna?.vibe ?? []).slice(0, 4),
-    palette: hexes.map((h, i) => `${roles[i]}: ${h} (${paletteToWords([h])[0] ?? "colour"})`),
+    // Words, never hex: image models treat "#C1440E" as noise.
+    colours: hexes.map((h, i) => `${roles[i]}: ${paletteToWords([h])[0] ?? "colour"}`),
+    surface: neutral ? `${paletteToWords([neutral])[0] ?? "neutral"} (use for backdrops, tabletops, walls)` : "",
     typography: [guide?.typography, tokens ? `heading ${tokens.font?.heading?.$value ?? ""}, body ${tokens.font?.body?.$value ?? ""}` : ""].filter(Boolean).join("; "),
-    textStyle: { colour: guide?.textColor, box: guide?.textBox },
     imagery: model?.expression.imageryStyle || guide?.medium || dna?.visual_style || "",
-    motifs: (model?.expression.distinctiveAssets ?? []).slice(0, 4),
+    composition: guide?.composition ?? "",
+    motifs,
     people: guide?.peoplePct === undefined ? "unknown" : `${guide.peoplePct}% of posts show people (${guide.peopleStyle || "candid"})`,
     stylePromptSuffix: guide?.promptSuffix ?? "",
-    prohibitions: ["no text or logos inside the photo (text is added in a separate layer)"],
   };
-  const visual = post.visualBrief;
-  return [
-    `BRAND_MODEL:\n${JSON.stringify(brand, null, 2)}`,
-    `PAST_TOP_POSTS:\n${topPosts.length ? topPosts.map((p) => `- id ${p.id}${p.kind ? ` (${p.kind})` : ""}${p.metrics ? ` [${p.metrics}]` : ""}: "${p.caption.slice(0, 220)}"`).join("\n") : "- none available; infer the archetype from the brand model"}`,
-    `TEXT_CONTENT:\n${JSON.stringify({ headline: post.headline ?? "", subhead: post.subline ?? "", supporting_bullets: post.items ?? (post.stat ? [post.stat] : []), cta: post.cta }, null, 2)}`,
-    visual && `SCENE HINT FROM THE COPYWRITER (keep the idea, upgrade the execution): ${[visual.subject, visual.setting, visual.lighting, visual.composition].filter(Boolean).join("; ")}${visual.usesProductPhoto ? ". A real product photo is used, so direct the surrounding frame and light, not a new product." : ""}`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  const top = (args.topPosts ?? []).slice(0, 4).map((p) => ({
+    id: p.id,
+    kind: p.kind,
+    engagement: p.metrics ?? (p.engagement !== undefined ? Math.round(p.engagement) : undefined),
+    caption: clip(p.caption, 90),
+    shows: p.visualTags?.length ? p.visualTags.join("; ") : undefined,
+  }));
+  return `ART BRAND:
+${JSON.stringify(brand, null, 2)}${top.length ? `\nTOP POSTS (highest engagement first; use an id in inspired_by_post_id):\n${JSON.stringify(top, null, 2)}` : ""}`;
+}
+
+/** Validates the model's raw "art" object and attaches the overlay text from the final copy. `zone` is the layout's locked text zone. */
+export function artFromPost(raw: unknown, copy: { headline?: string; subline?: string; items?: string[]; cta?: string }, zone?: string): ArtDirection | null {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const parsed = ArtDirectionSchema.safeParse({
+    ...r,
+    // The layout decides where the text goes, never the model.
+    negative_space_zone: zone ?? r.negative_space_zone ?? FULL_BLEED_ZONE,
+    overlay_text_layers: { headline: copy.headline ?? "", subhead: copy.subline ?? "", supporting_bullets: copy.items ?? [], cta: copy.cta ?? "" },
+  });
+  return parsed.success ? parsed.data : null;
 }
 
 /** Drop sentences that ask the image model to draw an overlay card/box/panel (text is composited later). */
@@ -96,10 +144,11 @@ export function stripTextCardSentences(prompt: string): string {
 
 /** Image-model prompt from a validated art direction: the compiled prompt plus layout and exclusions. */
 export function imagePromptFromDirection(d: ArtDirection): string {
+  const hasZone = !d.negative_space_zone.startsWith("none");
   return [
-    stripTextCardSentences(d.compiled_image_prompt).trim(),
-    // layout_archetype is typography detail for the overlay layer (and small models bloat it), so only the zone goes to the image model.
-    `Keep ${d.negative_space_zone.slice(0, 120)} clean and calm, with no card, box or panel drawn there.`,
+    // Belt and braces: the model is told not to, but raw hex codes confuse diffusion models.
+    stripTextCardSentences(d.compiled_image_prompt).replace(/#[0-9a-f]{3,8}\b/gi, "").replace(/\s{2,}/g, " ").trim(),
+    hasZone && `Keep the ${d.negative_space_zone.slice(0, 120)} clean and calm, with no card, box or panel drawn there.`,
     "Photograph only: do not render any text, letters, numbers, logos or watermarks in the image.",
     d.negative_prompt && `Avoid: ${d.negative_prompt}.`,
   ]

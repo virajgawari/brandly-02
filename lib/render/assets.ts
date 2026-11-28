@@ -47,6 +47,8 @@ export interface ImageOptions {
   duotone?: string;
   /** Keep transparency (logos). */
   keepAlpha?: boolean;
+  /** Enlarge small photos to maxSide with lanczos3 and a light sharpen (generated or low-res images). */
+  upscale?: boolean;
 }
 
 /** Turns image bytes into a data URI Satori can draw. Returns undefined for unusable images. */
@@ -62,7 +64,8 @@ export async function toRenderable(input: { buf: Buffer; type: string }, opts: I
   try {
     let img = sharp(buf, { density: isSvg ? 300 : undefined, animated: false }).rotate();
     const max = opts.maxSide ?? 1600;
-    img = img.resize({ width: max, height: max, fit: "inside", withoutEnlargement: !isSvg });
+    img = img.resize({ width: max, height: max, fit: "inside", withoutEnlargement: !isSvg && !opts.upscale, kernel: "lanczos3" });
+    if (opts.upscale && !isSvg) img = img.sharpen({ sigma: 0.6 });
     if (opts.duotone) {
       const [r, g, b] = hexToRgb(opts.duotone);
       img = img.grayscale().tint({ r, g, b });
@@ -169,6 +172,24 @@ export async function imageTone(dataUri: string | undefined): Promise<"light" | 
       weight += a;
     }
     return weight ? (sum / weight > 0.6 ? "light" : "dark") : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Mean brightness (0-255) of the bottom 40% of an image, where headlines usually sit. undefined when it can't be measured. */
+export async function bottomLuminance(dataUri: string | undefined): Promise<number | undefined> {
+  if (!dataUri) return undefined;
+  const sharp = await getSharp();
+  if (!sharp) return undefined;
+  try {
+    const buf = Buffer.from(dataUri.split(",")[1] ?? "", "base64");
+    const meta = await sharp(buf).metadata();
+    if (!meta.width || !meta.height) return undefined;
+    const top = Math.floor(meta.height * 0.6);
+    const { channels } = await sharp(buf).extract({ left: 0, top, width: meta.width, height: meta.height - top }).removeAlpha().toColourspace("srgb").stats();
+    const [r, g, b] = channels.map((c) => c.mean);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
   } catch {
     return undefined;
   }

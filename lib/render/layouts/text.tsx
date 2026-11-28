@@ -1,5 +1,5 @@
 // Text-led layouts: big number, quote, checklist, myth/fact.
-import { AccentMark, applyCase, CornerLogo, edgePad, Frame, Headline, PAD, scheme, Subline, type LayoutProps } from "./shared";
+import { AccentMark, applyCase, CornerLogo, edgePad, Frame, Headline, PAD, parseEmphasis, scheme, Subline, type LayoutProps } from "./shared";
 
 export function BigNumber(p: LayoutProps) {
   const s = scheme(p);
@@ -17,12 +17,19 @@ export function BigNumber(p: LayoutProps) {
 
 export function Quote(p: LayoutProps) {
   const s = scheme(p);
-  const text = applyCase(p.headline, p.kit.headlineCase === "upper" ? "sentence" : p.kit.headlineCase);
+  const parsed = parseEmphasis(p.headline);
+  const text = applyCase(parsed.plain, p.kit.headlineCase === "upper" ? "sentence" : p.kit.headlineCase);
+  const quoteSize = Math.min(76, Math.round(5200 / Math.max(text.length, 24)) + 22);
+  // Case changes keep the word count, so emphasis flags still line up by index.
+  const words = text.split(/\s+/);
+  const hasEm = parsed.words.some((x) => x.em) && words.length === parsed.words.length;
   return (
     <Frame bg={s.bg} style={{ flexDirection: "column", justifyContent: "center", padding: PAD * 1.2, ...edgePad(p, PAD * 1.2) }}>
       <div style={{ display: "flex", fontFamily: p.fonts.heading, fontWeight: 700, fontSize: 260, lineHeight: 0.8, color: s.accent, height: 150 }}>“</div>
-      <div style={{ display: "flex", fontFamily: p.fonts.heading, fontWeight: 700, fontSize: Math.min(76, Math.round(5200 / Math.max(text.length, 24)) + 22), lineHeight: 1.18, color: s.fg }}>
-        {text}
+      <div style={{ display: "flex", flexWrap: "wrap", fontFamily: p.fonts.heading, fontWeight: 700, fontSize: quoteSize, lineHeight: 1.18, color: s.fg }}>
+        {hasEm ? words.map((w, i) => (
+          <span key={i} style={{ display: "flex", marginRight: Math.round(quoteSize * 0.24), color: parsed.words[i].em ? s.accent : undefined }}>{w}</span>
+        )) : text}
       </div>
       {p.subline ? (
         <div style={{ display: "flex", alignItems: "center", marginTop: 48 }}>
@@ -76,7 +83,7 @@ export function Checklist(p: LayoutProps) {
 
 export function MythFact(p: LayoutProps) {
   const s = scheme(p);
-  const [myth, fact] = [p.items?.[0] ?? p.headline, p.items?.[1] ?? p.subline ?? ""];
+  const [myth, fact] = [p.items?.[0] ?? p.headline, p.items?.[1] ?? p.subline ?? ""].map((t) => t.replace(/\*/g, ""));
   const r = p.kit.radius;
   const label = (t: string, bg: string, fg: string) => (
     <div style={{ display: "flex", alignSelf: "flex-start", padding: "8px 20px", background: bg, color: fg, fontFamily: p.fonts.heading, fontWeight: 700, fontSize: 26, letterSpacing: 2, borderRadius: Math.min(r, 20) }}>

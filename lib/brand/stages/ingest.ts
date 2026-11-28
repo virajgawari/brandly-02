@@ -29,6 +29,8 @@ export interface IngestOutput {
   photoUrls?: string[];
   /** Logo/photo analysis started during the crawl; the visual stage reuses it. */
   visualPre?: VisualResult;
+  /** Still-running analysis when the ingest race timed out; the visual stage awaits it instead of starting a second one. */
+  visualPending?: Promise<VisualResult>;
 }
 
 const VISION_PROMPT = `These images come from one brand (catalogue pages, social posts or screenshots).
@@ -100,7 +102,12 @@ export const ingestStage: StageDefinition<IngestInput> = {
             });
             output.website = site;
             output.pages = pages;
-            if (visualP) output.visualPre = await visualP;
+            // Capped like the visual stage's own race; on timeout the visual stage awaits the same promise.
+            if (visualP) {
+              const done = await Promise.race([visualP, new Promise<undefined>((r) => setTimeout(() => r(undefined), 15_000))]);
+              if (done) output.visualPre = done;
+              else output.visualPending = visualP;
+            }
             output.sitePages = [
               { url: site.url, title: site.title, description: site.description, headings: site.headings, text: site.copySample, images: site.images.slice(0, 8) },
               ...pages,

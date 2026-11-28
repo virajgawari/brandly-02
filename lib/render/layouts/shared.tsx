@@ -37,6 +37,10 @@ export interface LayoutProps {
   textBox?: "none" | "pill" | "box";
   headline: string;
   subline?: string;
+  /** Content pillar, shown as a small kicker above the headline. */
+  kicker?: string;
+  /** Mean brightness (0-255) of the photo's lower 40%, measured server-side; drives the scrim strength. */
+  photoLuma?: number;
   cta?: string;
   items?: string[];
   stat?: string;
@@ -170,28 +174,94 @@ export function AccentMark({ p, color }: { p: LayoutProps; color: string }) {
   return <div style={{ display: "flex", width: 64, height: 64, borderTop: `10px solid ${color}`, borderLeft: `10px solid ${color}`, marginBottom: 32 }} />;
 }
 
-export function Headline({ p, color, size, style }: { p: LayoutProps; color: string; size?: number; style?: CSSProperties }) {
-  const text = applyCase(p.headline, p.kit.headlineCase);
+/** Splits "Make *every* post count" into words, flagging the ones wrapped in asterisks. */
+export function parseEmphasis(text: string): { plain: string; words: { w: string; em: boolean }[] } {
+  const words: { w: string; em: boolean }[] = [];
+  let em = false;
+  for (const part of text.split(/(\*)/)) {
+    if (part === "*") {
+      em = !em;
+      continue;
+    }
+    for (const w of part.split(/\s+/).filter(Boolean)) words.push({ w, em });
+  }
+  return { plain: words.map((x) => x.w).join(" "), words };
+}
+
+export function Headline({ p, color, size, style, accent }: { p: LayoutProps; color: string; size?: number; style?: CSSProperties; accent?: string }) {
+  const parsed = parseEmphasis(p.headline);
+  const text = applyCase(parsed.plain, p.kit.headlineCase);
   // Capitals are wider: shrink explicit sizes too.
   const want = size ? Math.round(size * (p.kit.headlineCase === "upper" ? 0.86 : 1)) : headlineSize(text, p.width);
   // Never clip: step the size down until the wrapped headline fits its slot.
-  const fit = fitTextToBox(text, { boxW: p.width - PAD * 2, boxH: p.height * 0.4, minPx: Math.round(want * 0.5), maxPx: want, lineHeight: 1.08 });
+  const fit = fitTextToBox(text, { boxW: p.width - PAD * 2, boxH: p.height * 0.4, minPx: Math.round(want * 0.5), maxPx: want, lineHeight: 1.02 });
   const fs = fit.px;
+  const base: CSSProperties = {
+    display: "flex",
+    fontFamily: p.fonts.heading,
+    fontWeight: 800,
+    fontSize: fs,
+    lineHeight: 1.02,
+    letterSpacing: p.kit.headlineCase === "upper" ? 1 : -1.5,
+    color: pickText(p, color),
+    ...style,
+  };
+  // Emphasis only when the fitted text kept every word (no ellipsis) and an accent was given.
+  const hasEm = !!accent && parsed.words.some((x) => x.em) && fit.text === text;
+  if (!hasEm) return <div style={base}>{fit.text}</div>;
+  const words = fit.text.split(/\s+/);
+  return (
+    <div style={{ ...base, flexWrap: "wrap" }}>
+      {words.map((w, i) => (
+        <span key={i} style={{ display: "flex", marginRight: Math.round(fs * 0.24), color: parsed.words[i]?.em ? accent : undefined }}>
+          {w}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Small uppercase label above the headline (the content pillar). */
+export function Kicker({ p, color }: { p: LayoutProps; color: string }) {
+  if (!p.kicker) return null;
+  return (
+    <div style={{ display: "flex", fontFamily: p.fonts.body, fontWeight: 600, fontSize: 20, letterSpacing: 3.5, textTransform: "uppercase", color, marginBottom: 22 }}>
+      {p.kicker.slice(0, 32)}
+    </div>
+  );
+}
+
+const rgbOf = (hex: string): [number, number, number] => {
+  const h = hex.replace("#", "");
+  const f = h.length === 3 ? h.split("").map((c) => c + c).join("") : h.padEnd(6, "0");
+  return [parseInt(f.slice(0, 2), 16) || 0, parseInt(f.slice(2, 4), 16) || 0, parseInt(f.slice(4, 6), 16) || 0];
+};
+
+/** Strength of the bottom scrim from the photo's measured brightness: bright photos need more help. */
+export function scrimAlpha(luma?: number): number {
+  if (luma === undefined) return 0.72;
+  if (luma > 140) return 0.88;
+  if (luma < 75) return 0.58;
+  return 0.58 + ((luma - 75) / (140 - 75)) * 0.3;
+}
+
+/** Four-stop gradient over the photo's lower part, tinted with a very dark shade of the brand colour. */
+export function Scrim({ p, from = 38 }: { p: LayoutProps; from?: number }) {
+  const [r, g, b] = rgbOf(p.colors.primary).map((c) => Math.round(c * 0.18));
+  const a = scrimAlpha(p.photoLuma);
+  const c = (x: number) => `rgba(${r},${g},${b},${x.toFixed(2)})`;
   return (
     <div
       style={{
         display: "flex",
-        fontFamily: p.fonts.heading,
-        fontWeight: 700,
-        fontSize: fs,
-        lineHeight: 1.08,
-        letterSpacing: p.kit.headlineCase === "upper" ? 1 : -1,
-        color: pickText(p, color),
-        ...style,
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: p.width,
+        height: p.height,
+        backgroundImage: `linear-gradient(180deg, ${c(0)} ${from}%, ${c(a * 0.35)} ${from + (100 - from) * 0.4}%, ${c(a * 0.72)} ${from + (100 - from) * 0.72}%, ${c(a)} 100%)`,
       }}
-    >
-      {fit.text}
-    </div>
+    />
   );
 }
 
@@ -208,14 +278,14 @@ export function Cta({ p, bg, fg }: { p: LayoutProps; bg: string; fg: string }) {
       style={{
         display: "flex",
         alignSelf: "flex-start",
-        padding: "18px 34px",
+        padding: "14px 26px",
         background: bg,
         color: fg,
         borderRadius: Math.min(p.kit.radius * 2, 40),
         fontFamily: p.fonts.body,
         fontWeight: 700,
-        fontSize: 30,
-        marginTop: 44,
+        fontSize: 26,
+        marginTop: 36,
       }}
     >
       {text}
@@ -233,16 +303,10 @@ export function FullBleedPhoto({ p }: { p: LayoutProps }) {
     <div style={{ display: "flex", position: "absolute", top: 0, left: 0, width: p.width, height: p.height }}>
       <Photo p={p} style={{ width: p.width, height: p.height }} />
       <div
-        style={{
-          display: "flex",
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: p.width,
-          height: p.height,
-          backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,0) 30%, rgba(0,0,0,0.88) 100%)",
-        }}
-      />
+        style={{ display: "flex", position: "absolute", top: 0, left: 0, width: p.width, height: p.height }}
+      >
+        <Scrim p={p} from={30} />
+      </div>
     </div>
   );
 }

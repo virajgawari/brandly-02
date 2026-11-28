@@ -7,6 +7,8 @@ import { persistRecord, startRecord } from "@/lib/llm-log";
 const DEFAULT_BASE = "https://api.meta.ai/v1";
 const DEFAULT_MODEL = "muse-image-1.0";
 const TIMEOUT_MS = 45_000;
+/** No retry once the first attempt has used this long (routes allow 60 s in total). */
+const RETRY_WINDOW_MS = 10_000;
 const COST_USD = 0.01;
 
 export type MuseAspect = "4:5" | "1:1" | "9:16";
@@ -80,6 +82,8 @@ export async function museImage(req: MuseRequest): Promise<Buffer | undefined> {
         last = { status: 0, json: { error: { message: err instanceof Error ? err.message : String(err) } } };
       }
       if (last.status !== 503 && last.status !== 0) break; // only outages are worth a second try
+      // A second 45 s attempt would blow the 60 s route limit; retry only after a fast failure.
+      if (Date.now() - started > RETRY_WINDOW_MS) break;
     }
     const b64 = last?.json?.data?.[0]?.b64_json;
     if (last && last.status < 400 && typeof b64 === "string" && b64) {

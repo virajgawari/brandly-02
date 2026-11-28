@@ -14,6 +14,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { data, error } = await s.db.from("products").update(clean).eq("id", id).select("*").maybeSingle();
     if (error) throw error;
     if (!data) return NextResponse.json({ error: "Product not found." }, { status: 404 });
+    if (clean.image_paths?.length && data.cutout_status !== "ready") {
+      const { enqueueAndKick } = await import("@/lib/jobs/queue");
+      await enqueueAndKick({ kind: "product.cutout", workspaceId: s.workspaceId, brandId: data.brand_id, payload: { productId: data.id }, dedupeKey: `cutout:${data.id}`, createdBy: s.userId, maxAttempts: 2 }).catch((e) => console.error("[products] cutout enqueue failed", e));
+    }
     return NextResponse.json({ product: toProduct(data) });
   } catch (err) {
     return errorResponse(err, "product update");

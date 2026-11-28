@@ -30,6 +30,20 @@ const BAD_REASONS = ["Off-brand", "Wrong tone", "Too long", "Too generic", "Wron
 const PLATFORMS: Platform[] = ["instagram", "facebook", "linkedin", "twitter"];
 const TONES = ["Brand default", "Witty & playful", "Professional", "Inspirational", "Educational", "Urgent"];
 
+/** Polls a generate.post job every 2 s until it finishes (or about 3 minutes pass). */
+async function pollGeneration(jobId: string): Promise<{ post?: GeneratedPost; generationId?: string; error?: string }> {
+  const until = Date.now() + 180_000;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const res = await fetch(`/api/jobs/${jobId}`);
+    const job = await res.json().catch(() => ({}));
+    if (!res.ok) return { error: job.error ?? "Couldn't check on the post. Please try again." };
+    if (job.status === "done") return job.result ?? { error: "Couldn't write a post. Please try again." };
+    if (job.status === "dead" || job.status === "error") return { error: job.error ?? "Couldn't write a post. Please try again." };
+  }
+  return { error: "Writing the post is taking too long. Please try again." };
+}
+
 export default function ComposerPage() {
   const { getActiveBrand, addPost } = useStore();
   const brand = getActiveBrand();
@@ -366,6 +380,8 @@ export default function ComposerPage() {
       }),
     });
     data = await res.json().catch(() => ({}));
+    const jobId = (data as { jobId?: string }).jobId;
+    if (jobId) data = await pollGeneration(jobId);
     } catch (err) {
       data = { error: err instanceof Error ? err.message : "Network problem. Please try again." };
     }

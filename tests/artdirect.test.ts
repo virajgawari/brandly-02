@@ -1,20 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ArtDirectionSchema, buildArtDirectorUser, imagePromptFromDirection, stripTextCardSentences } from "@/lib/content/artdirect";
-import type { GeneratedPost } from "@/lib/types";
-
-const post = {
-  caption: "c",
-  hashtags: [],
-  imagePrompt: "",
-  cta: "Order today",
-  bestTimeToPost: "",
-  postType: "Single image",
-  platformVariants: {},
-  headline: "Slow mornings",
-  subline: "Fresh roasted weekly",
-  items: ["Small batch"],
-  visualBrief: { subject: "a ceramic cup", setting: "stone table", lighting: "morning light", composition: "overhead", usesProductPhoto: false },
-} as GeneratedPost;
+import { ArtDirectionSchema, artFromPost, imagePromptFromDirection, stripTextCardSentences } from "@/lib/content/artdirect";
 
 const direction = {
   inspired_by_post_id: "top-1",
@@ -31,16 +16,12 @@ describe("art director", () => {
     expect(ArtDirectionSchema.safeParse({ ...direction, compiled_image_prompt: "short" }).success).toBe(false);
   });
 
-  it("builds the user message with the exact copy and past posts", () => {
-    const u = buildArtDirectorUser({ post, brandName: "Acme", topPosts: [{ id: "top-1", caption: "Our best roast" }] });
-    expect(u).toContain("BRAND_MODEL");
-    expect(u).toContain('"headline": "Slow mornings"');
-    expect(u).toContain("top-1");
-    expect(u).toContain("a ceramic cup");
-  });
-
-  it("says so when there are no past posts", () => {
-    expect(buildArtDirectorUser({ post, topPosts: [] })).toContain("none available");
+  it("attaches the final copy as overlay text and rejects a bad art object", () => {
+    const art = artFromPost(direction, { headline: "Slow mornings", subline: "Fresh roasted weekly", items: ["Small batch"], cta: "Order today" });
+    expect(art?.overlay_text_layers.headline).toBe("Slow mornings");
+    expect(art?.overlay_text_layers.cta).toBe("Order today");
+    expect(artFromPost({ ...direction, compiled_image_prompt: "short" }, {})).toBeNull();
+    expect(artFromPost(undefined, {})).toBeNull();
   });
 
   it("final image prompt keeps the layout, forbids in-image text and appends exclusions", () => {
